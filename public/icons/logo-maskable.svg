@@ -1,0 +1,12 @@
+<!-- Android "maskable" icon (docs/design.md §8): a full-bleed green square, with the awning and book
+     scaled to the middle 70% so Android's round or squircle mask never cuts them. Source for maskable-512.png. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <rect width="120" height="120" fill="#0F6B4A"/>
+  <g transform="translate(60 61) scale(0.7) translate(-60 -61)">
+    <path d="M22 28 H98 V40 a9.5 9.5 0 0 1 -19 0 a9.5 9.5 0 0 1 -19 0 a9.5 9.5 0 0 1 -19 0 a9.5 9.5 0 0 1 -19 0 Z" fill="#F2B544"/>
+    <path d="M26 58 Q43 52 58 58 V94 Q43 88 26 94 Z" fill="#FFFFFF"/>
+    <path d="M62 58 Q77 52 94 58 V94 Q77 88 62 94 Z" fill="#FFFFFF"/>
+    <path d="M33 68 H51 M33 76 H51 M33 84 H45" stroke="#0F6B4A" stroke-width="3" stroke-linecap="round"/>
+    <path d="M70 76 l6 6 l11 -13" stroke="#0F6B4A" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

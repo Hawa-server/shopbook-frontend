@@ -1,0 +1,16 @@
+# Installed packages and build output
+node_modules/
+dist/
+dev-dist/
+coverage/
+
+# Settings with local or secret values (only .env.example is committed)
+.env
+.env.*
+!.env.example
+
+# Editors and system files
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json

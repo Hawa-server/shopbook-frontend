@@ -1,0 +1,84 @@
+/* The app's look: Tailwind plus the design values from docs/design.md as CSS variables.
+   Components use these through Tailwind classes (bg-primary, text-ink…); no hex values in components.
+   Sizes are in rem so they grow with the phone's larger-text setting (up to 130%). */
+
+@import "tailwindcss";
+
+/* `static` keeps every variable in the output even if no class uses it yet. */
+@theme static {
+  /* brand (design.md §2) */
+  --color-primary: #0F6B4A;        /* market green: main buttons, links, active tab (6.5:1 on white) */
+  --color-primary-pressed: #0A4F37;
+  --color-primary-soft: #E6F3EC;
+  --color-gold: #F2B544;           /* decoration only: never text in gold, never white text on gold */
+
+  /* text and surfaces */
+  --color-ink: #1B1B18;            /* body text (17:1) */
+  --color-ink-2: #45433C;          /* secondary text */
+  --color-muted: #5C5A52;          /* labels, hints (6.9:1) */
+  --color-ground: #F4F2EC;         /* screen background */
+  --color-paper: #FFFFFF;          /* cards, inputs, header, tabs */
+  --color-line: #E2DFD6;           /* dividers, card borders */
+  --color-input-line: #858174;     /* input and switch borders (3.9:1 on white) */
+
+  /* status: always with a word and an icon, never colour alone */
+  --color-owes: #A0480B;     --color-owes-soft: #FDF0E4;
+  --color-paid: #0F6B4A;     --color-paid-soft: #E6F3EC;
+  --color-low: #7A5300;      --color-low-soft: #FFF4D6;
+  --color-pending: #3D5A80;  --color-pending-soft: #E9EEF5;
+  --color-danger: #B42318;   --color-danger-soft: #FDECEA;
+
+  /* type (design.md §3): system fonts only, nothing downloaded */
+  --font-sans: system-ui, Roboto, "Segoe UI", sans-serif;
+  --text-money-xl: 2.75rem;  /* 44px: balance, day total */
+  --text-money-lg: 1.875rem; /* 30px: cart or receipt total */
+  --text-title: 1.125rem;    /* 18px: screen title */
+  --text-item: 1.0625rem;    /* 17px: list item title */
+  --text-body: 1rem;         /* 16px: everything a person reads to act */
+  --text-secondary: 0.875rem;/* 14px: secondary lines only */
+  --text-tab: 0.8125rem;     /* 13px: bottom tab labels only */
+
+  /* shape (design.md §4) */
+  --radius-card: 14px;
+  --radius-summary: 18px;
+  --radius-input: 12px;
+
+  /* sizes */
+  --spacing-tap: 3rem;       /* 48px: the smallest tappable control */
+  --spacing-main: 3.5rem;    /* 56px: main action button */
+  --spacing-tabs: 4.25rem;   /* 68px: bottom tab bar */
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Money and quantities line up in columns. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A clear focus ring for keyboards and switch access, in the brand colour. */
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Respect "reduce motion". */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
