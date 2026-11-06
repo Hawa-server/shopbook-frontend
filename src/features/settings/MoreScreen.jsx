@@ -1,11 +1,11 @@
 // The More screen. FE1 has two parts:
-// - Language: English or Twi for this phone; every word on every screen changes at once.
+// - Language: the phone's language (every language in i18n/languages.js); every word changes at once.
 // - App and server: this app's version and whether the server answers /api/health (the FE1 check that
 //   the live address reaches the server through /api). Later tasks add Help, settings and the rest here.
 
 import { useT } from '../../i18n/t.js';
 import { useHealth } from '../../api/health.js';
-import { LANGUAGES } from '../../i18n/translate.js';
+import { LANGUAGE_TAGS } from '../../i18n/languages.js';
 import Screen from '../../components/Screen.jsx';
 import Button from '../../components/Button.jsx';
 import Icon from '../../components/Icon.jsx';
@@ -24,7 +24,7 @@ export default function MoreScreen() {
   );
 }
 
-// Two 48px buttons, English and Twi; the chosen one is green. aria-pressed tells screen readers which.
+// One 48px button per language (they wrap onto more rows as languages are added); the chosen one is green. aria-pressed tells screen readers which.
 function LanguageCard() {
   const { t, language, setLanguage } = useT();
   return (
@@ -33,8 +33,8 @@ function LanguageCard() {
         <Icon name="globe" className="text-primary" />
         {t('language.title')}
       </h2>
-      <div className="grid grid-cols-2 gap-1 rounded-input border-[1.5px] border-input-line bg-ground p-1">
-        {LANGUAGES.map((code) => {
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-1 rounded-input border-[1.5px] border-input-line bg-ground p-1">
+        {LANGUAGE_TAGS.map((code) => {
           const chosen = code === language;
           return (
             <button

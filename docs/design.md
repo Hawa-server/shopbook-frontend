@@ -8,9 +8,9 @@ The visual reference is the design canvas I share separately (brand, logo, colou
 
 ## 1. Brand name
 
-The final name isn't chosen yet (options: **Ledga**, Tallo, Stalla, Nkoso). Until it is:
+The name shown to users is **Ledga** (chosen 6 Nov 2026). "Shop Book" stays the project's internal name (documents, database names).
 
-- The app's own name appears in exactly **one** place: the dictionary key `app.name` (English and Twi), value `"Shop Book"`. The manifest's `name`/`short_name` and the `<title>` read the same value at build time.
+- The app's own name appears in exactly **one** place: the dictionary key `app.name` (every language), value `"Ledga"`. The manifest's `name`/`short_name` and the `<title>` read the same value at build time.
 - **Never type the name anywhere else.** Changing the brand later must be a one-line change plus new icons.
 - The **business's** name (e.g. "Adwoa Fabrics") is a different thing: it comes from Business settings (`businessName`) and is never typed into code.
 
@@ -103,7 +103,7 @@ All in `src/components/`.
 | `BottomTabs` | White, top line, 68px tall, five equal tabs: icon over label. Active = primary colour, bold; others muted. Tabs a role can't use are hidden (see "Who sees what"). |
 | `Button` | `primary` (green fill, white text), `secondary` (white, 2px green border, green text), `danger` (white, red border and text), `quiet` (no border). 56px default; `size="sm"` 48px (the smallest allowed). Disabled = 40% opacity and not clickable. |
 | `Field` | Label (15/600) above, 52px input, hint or error (14px) below. Errors in `--color-danger` with an icon and words. |
-| `MoneyText` | Formats pesewas as `GH₵ 1,240.00` via `lib/money.js`, with a **non-breaking space** after `GH₵` (`\u00A0`) and the whole amount in `white-space: nowrap`, so an amount never splits across lines; sizes `xl`, `lg`, `md`; optional colour for owes/paid. A minus is written "−" with a non-breaking space: `− GH₵ 150.00`. |
+| `MoneyText` | Formats minor units with the business's currency rules via `lib/money.js` (`GH₵ 1,240.00` in Ghana), with the currency's **non-breaking space** between symbol and number and the whole amount in `white-space: nowrap`, so an amount never splits across lines; sizes `xl`, `lg`, `md`; optional colour for owes/paid. A negative amount has "-" in front, exactly as `api.md` writes it: `-GH₵ 150.00`. |
 | `StatusChip` | Rounded pill: soft background, coloured bold text, icon + word: **Owes** (wallet), **Paid** (tick), **Low stock** (bars), **Not sent yet** / "2 not sent" (**clock**, as in the app plan's sync states), **Sending…** (circular arrows, only while a sync is actually running), **Needs attention** (warning triangle), **All sent** (tick). |
 | `ListCard` | White, radius 14, padding 12–16; title + secondary line on the left, amount on the right, optional chevron or action button. Whole card tappable when it opens something (a real link or button, never a tappable div). |
 | `SummaryCard` | White, radius 18, padding 18–20: a small label, a big `MoneyText`, then a 3-column breakdown (Cash · Mobile money · On credit). The credit cell uses the owes colours. |
@@ -186,7 +186,7 @@ The mark is a **gold market awning over an open book with a tick**, on a market-
 ## 9. Writing on screen
 
 - Short, plain words; say what happened and what to do next ("Couldn't send. It will try again when you're online.").
-- Money always as `GH₵ 120.00`; yard quantities as "2.5 yards"; dates as "Tue 3 Nov", times as "2:15 pm".
+- Money always in the business's currency, written by `lib/money.js` (`GH₵ 120.00` in Ghana); yard quantities as "2.5 yards"; dates as "Tue 3 Nov", times as "2:15 pm".
 - Every word comes from the English and Twi dictionaries through `t()`.
 
 ---
