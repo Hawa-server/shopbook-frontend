@@ -11,7 +11,9 @@ import { useT } from '../i18n/t.js';
 import { hasUnsavedInput } from '../lib/unsavedInput.js';
 import Button from './Button.jsx';
 
-export default function UpdatePrompt() {
+// `place`: 'aboveTabs' inside the app (just above the bottom tabs), or 'top' on screens without tabs,
+// whose main button sits at the bottom and must never be covered.
+export default function UpdatePrompt({ place = 'top' }) {
   const { t } = useT();
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -42,7 +44,9 @@ export default function UpdatePrompt() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed inset-x-0 z-30 mx-auto max-w-[480px] px-3 bottom-[calc(var(--spacing-tabs)+env(safe-area-inset-bottom)+0.5rem)]"
+      className={`fixed inset-x-0 z-30 mx-auto max-w-120 px-3 ${
+        place === 'aboveTabs' ? 'bottom-[calc(var(--spacing-tabs)+env(safe-area-inset-bottom)+0.5rem)]' : 'top-[calc(env(safe-area-inset-top)+0.5rem)]'
+      }`}
     >
       <div className="rounded-summary border border-line bg-paper p-4 shadow-lg">
         {needRefresh ? (

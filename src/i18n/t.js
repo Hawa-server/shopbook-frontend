@@ -7,23 +7,29 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { appDb, setAppValue } from '../db/appDb.js';
-import { DEFAULT_LANGUAGE, LANGUAGES, translate } from './translate.js';
+import { translate } from './translate.js';
+import { DEFAULT_LANGUAGE, LANGUAGE_TAGS } from './languages.js';
 
 const LanguageContext = createContext(null);
 
 // Wraps the app: reads the saved language and provides { language, setLanguage, t } to every screen.
 export function LanguageProvider({ children }) {
   const saved = useLiveQuery(() => appDb.kv.get('language'), []);
-  const language = LANGUAGES.includes(saved?.value) ? saved.value : DEFAULT_LANGUAGE;
+  const language = LANGUAGE_TAGS.includes(saved?.value) ? saved.value : DEFAULT_LANGUAGE;
 
   // Keeps <html lang> right, so screen readers pronounce the words in the right language.
   useEffect(() => {
-    document.documentElement.lang = language === 'tw' ? 'tw' : 'en';
+    document.documentElement.lang = language;
   }, [language]);
 
   const setLanguage = useCallback((next) => {
-    if (!LANGUAGES.includes(next)) throw new Error(`Unknown language ${next}`);
-    return setAppValue('language', next);
+    if (!LANGUAGE_TAGS.includes(next)) throw new Error(`Unknown language ${next}`);
+    // Saved on the phone at once; also marked "to send" so the AuthProvider tells the server
+    // (PATCH /api/auth/me) when signed in and online.
+    return appDb.transaction('rw', appDb.kv, async () => {
+      await setAppValue('language', next);
+      await setAppValue('pendingLanguage', next);
+    });
   }, []);
 
   const value = useMemo(

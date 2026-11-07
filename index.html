@@ -1,5 +1,8 @@
 <!doctype html>
-<!-- The single page that loads the app. No inline scripts (the Content-Security-Policy forbids them). -->
+<!-- The single page that loads the app. No inline scripts (the Content-Security-Policy forbids them).
+     The splash inside #root is plain HTML and CSS, so it shows the instant the page arrives, before any
+     JavaScript runs; React then shows the same splash (components/Splash.jsx) until the app is ready.
+     Inline <style> is allowed by the CSP (style-src 'unsafe-inline'); inline scripts are not. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -8,9 +11,24 @@
     <link rel="icon" type="image/svg+xml" href="/icons/logo-mark-small.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-180.png" />
     <title>%APP_NAME%</title>
+    <style>
+      /* Must look exactly like components/Splash.jsx, so there is no jump when React takes over. */
+      html, body { margin: 0; background: #F4F2EC; }
+      .boot-splash { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.25rem;
+        font-family: system-ui, Roboto, "Segoe UI", sans-serif; color: #1B1B18; }
+      .boot-splash img { width: 7rem; height: 7rem; animation: boot-pulse 1.6s ease-in-out infinite; }
+      .boot-splash p { margin: 0; font-size: 1.875rem; font-weight: 800; }
+      @keyframes boot-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.85; } }
+      @media (prefers-reduced-motion: reduce) { .boot-splash img { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-splash" aria-busy="true">
+        <img src="/icons/logo-mark.svg" alt="" width="112" height="112" />
+        <p>%APP_NAME%</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

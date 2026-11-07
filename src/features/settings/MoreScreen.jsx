@@ -1,11 +1,14 @@
-// The More screen. FE1 has two parts:
-// - Language: English or Twi for this phone; every word on every screen changes at once.
+// The More screen: My account (FE2), the phone's language, and App and server (FE1).
+// Later tasks add Help, Business settings and the rest here. Details of the FE1 parts:
+// - Language: the phone's language (every language in i18n/languages.js); every word changes at once.
 // - App and server: this app's version and whether the server answers /api/health (the FE1 check that
 //   the live address reaches the server through /api). Later tasks add Help, settings and the rest here.
 
 import { useT } from '../../i18n/t.js';
 import { useHealth } from '../../api/health.js';
-import { LANGUAGES } from '../../i18n/translate.js';
+import { useNavigate } from 'react-router';
+import { useAuth } from '../../auth/AuthProvider.jsx';
+import LanguageSwitch from '../../components/LanguageSwitch.jsx';
 import Screen from '../../components/Screen.jsx';
 import Button from '../../components/Button.jsx';
 import Icon from '../../components/Icon.jsx';
@@ -18,38 +21,45 @@ export default function MoreScreen() {
   const { t } = useT();
   return (
     <Screen title={t('more.title')}>
+      <AccountRow />
       <LanguageCard />
       <AboutCard />
     </Screen>
   );
 }
 
-// Two 48px buttons, English and Twi; the chosen one is green. aria-pressed tells screen readers which.
+// The phone's language: every word changes at once (and is sent to the server when signed in).
 function LanguageCard() {
-  const { t, language, setLanguage } = useT();
+  const { t } = useT();
   return (
     <section aria-labelledby="language-heading" className="rounded-summary bg-paper p-4">
       <h2 id="language-heading" className="mb-3 flex items-center gap-2 text-item font-semibold">
         <Icon name="globe" className="text-primary" />
         {t('language.title')}
       </h2>
-      <div className="grid grid-cols-2 gap-1 rounded-input border-[1.5px] border-input-line bg-ground p-1">
-        {LANGUAGES.map((code) => {
-          const chosen = code === language;
-          return (
-            <button
-              key={code}
-              type="button"
-              aria-pressed={chosen}
-              onClick={() => setLanguage(code)}
-              className={`min-h-tap rounded-[9px] px-3 font-bold ${chosen ? 'bg-primary text-paper' : 'text-ink'}`}
-            >
-              {t(`language.${code}`)}
-            </button>
-          );
-        })}
-      </div>
+      <LanguageSwitch />
     </section>
+  );
+}
+
+// The row that opens My account, showing whose account it is.
+function AccountRow() {
+  const { t } = useT();
+  const navigate = useNavigate();
+  const { me } = useAuth();
+  return (
+    <button
+      type="button"
+      onClick={() => navigate('/more/account')}
+      className="flex min-h-tap w-full items-center gap-3 rounded-summary bg-paper p-4 text-left active:bg-primary-soft"
+    >
+      <Icon name="user" className="text-primary" />
+      <span className="flex-1">
+        <span className="block text-item font-semibold">{t('account.title')}</span>
+        {me?.user?.name && <span className="block text-secondary text-muted">{me.user.name}</span>}
+      </span>
+      <Icon name="chevron" className="text-muted" />
+    </button>
   );
 }
 

@@ -16,6 +16,16 @@ describe('translate', () => {
   it('falls back to English for an unknown language', () => {
     expect(translate('fr', 'nav.sell')).toBe('Sell');
   });
+  it('shows English for a key a draft language does not have yet', async () => {
+    const { default: tw } = await import('./tw.js');
+    const saved = tw['nav.sell'];
+    delete tw['nav.sell'];
+    try {
+      expect(translate('tw', 'nav.sell')).toBe('Sell');
+    } finally {
+      tw['nav.sell'] = saved;
+    }
+  });
   it('shows the key itself when it is missing everywhere', () => {
     expect(translate('en', 'no.such.key')).toBe('no.such.key');
   });
