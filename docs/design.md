@@ -8,9 +8,9 @@ The visual reference is the design canvas I share separately (brand, logo, colou
 
 ## 1. Brand name
 
-The name shown to users is **Ledga** (chosen 6 Nov 2026). "Shop Book" stays the project's internal name (documents, database names).
+The name shown to users is **Kanbuk** (chosen 6 Nov 2026, replacing Ledga). "Shop Book" stays the project's internal name (documents, database names).
 
-- The app's own name appears in exactly **one** place: the dictionary key `app.name` (every language), value `"Ledga"`. The manifest's `name`/`short_name` and the `<title>` read the same value at build time.
+- The app's own name appears in exactly **one** place: the dictionary key `app.name` (every language), value `"Kanbuk"`. The manifest's `name`/`short_name` and the `<title>` read the same value at build time.
 - **Never type the name anywhere else.** Changing the brand later must be a one-line change plus new icons.
 - The **business's** name (e.g. "Adwoa Fabrics") is a different thing: it comes from Business settings (`businessName`) and is never typed into code.
 
@@ -99,7 +99,8 @@ All in `src/components/`.
 
 | Component | What it looks like |
 |---|---|
-| `Header` | White bar, bottom line. Left: back arrow (48px target) or the small logo (`logo-mark-small.svg`); title 18/700 with a 14px muted second line (business name, date). Right: sync `StatusChip`. |
+| `Header` | White bar, bottom line. Left: back arrow (48px target) or the small logo (`logo-mark-small.svg`); title 18/700 with a 14px muted second line (business name, date). Right: the speaker button (`SpeakButton`, 48px, only when the screen has a clip; §12), then the sync `StatusChip`. |
+| `SpeakButton` | Spoken help (AC46): a 48px button with a speaker icon and the label "Listen" ("Stop" while playing), in the Header's right side next to the sync chip. Plays the screen's recorded clip in the person's language, only when tapped. Hidden when that language has no clip for the screen, or when the phone can't play the clip's format. |
 | `BottomTabs` | White, top line, 68px tall, five equal tabs: icon over label. Active = primary colour, bold; others muted. Tabs a role can't use are hidden (see "Who sees what"). |
 | `Button` | `primary` (green fill, white text), `secondary` (white, 2px green border, green text), `danger` (white, red border and text), `quiet` (no border). 56px default; `size="sm"` 48px (the smallest allowed). Disabled = 40% opacity and not clickable. |
 | `Field` | Label (15/600) above, 52px input, hint or error (14px) below. Errors in `--color-danger` with an icon and words. |
@@ -145,6 +146,8 @@ The canvas shows these; build to match them. Sample names and amounts on the can
 
 **Sales associate**
 7. **My day:** "My day", their name, business, date, sync chip. Summary card of **their own** sales only (no profit), and "Cash in your hand should be GH₵ …". "My sales": each with receipt number and time, customer and "on credit" where relevant, and the Not sent yet chip until sent. **New sale** at the bottom.
+
+**Opening splash** (added 7 Nov 2026): when the app starts, the full logo (112px) pulses gently (scale 1 → 1.06, 1.6 s, ease-in-out) above the app's name (`app.name`, 30/800) on the cream ground, the same colours as Android's own splash from the manifest. It is written into `index.html` so it appears before any JavaScript runs, and `components/Splash.jsx` continues it until the app is ready: at least **3 seconds on the first opening after installing or updating** (so the brand is seen properly), and **1 second** every other time (traders often open the app with a customer waiting; AC30 asks for under 3 seconds), never longer than loading itself takes beyond that. Only at start-up, never between screens. Still (no pulse) when the phone asks for reduced motion; screen readers hear "Opening…".
 
 Screens not drawn yet (Stock, products, expenses, returns, close the day, sign-in) follow the same components and patterns; ask before inventing a new pattern.
 
@@ -225,4 +228,24 @@ Not on the canvas yet. Each is designed **before the task that builds it**, from
 | Every screen checked in **Twi** and at **130% text** | each task's checks |
 
 For each one, Claude Code proposes the layout **in words** using the patterns here (or I add it to the canvas), and waits for my OK.
+
+## 12. Spoken help clips (recording script)
+
+Each main screen and confirmation can have a short clip that explains it (AC46, app plan FE12). The clips are built in FE12, but the list grows **as screens are built**: each task adds its screens' rows here, so the recording script is ready when it's time to record.
+
+**Recorded by:** 
+
+**Recording note:**
+- A real person's voice, recorded in a quiet place; English and Twi say the same thing (the Twi is spoken naturally, not translated word for word).
+- **10–15 seconds** per clip. Mono, compressed speech audio (Opus, about 16 kbps): at that size 1 MB holds about 8 minutes in total, so roughly 4 minutes per language.
+- **Clips only explain what the screen is for and what to do.** Never amounts, names, dates or anything that changes, so one recording stays right for every shop and every day.
+- Files: `public/audio/en/<clip>.opus` and `public/audio/tw/<clip>.opus`. A screen whose clip is missing in a language shows no speaker button in that language.
+
+| Screen | Clip file | What it says (English; the Twi recording says the same) |
+|---|---|---|
+| Welcome | `welcome` | "This app keeps your shop's sales, stock and debts on your phone, even without internet. Tap Sign in if you already have an account, or Create a business account to start." |
+| Sign in | `sign-in` | "Type your phone number or your email, then your password, and tap Sign in. If you forgot your password, tap Forgot password." |
+| Create account | `sign-up` | "Fill in your name, phone number and email, your business name and a password. Read the privacy notice and terms, tick the box, then tap Create account." |
+| Set PIN | `set-pin` | "Choose four numbers you will remember, then type them again. Your PIN opens the app on this phone, even without internet. Don't tell anyone your PIN." |
+| PIN lock | `pin-lock` | "Type your four-number PIN to open the app. After five wrong tries, you will need to sign in with your password." |
 

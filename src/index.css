@@ -75,6 +75,12 @@ body {
   outline-offset: 2px;
 }
 
+/* The opening splash's gentle pulse (components/Splash.jsx; same as .boot-splash in index.html). */
+@keyframes splash-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.85; }
+}
+
 /* Respect "reduce motion". */
 @media (prefers-reduced-motion: reduce) {
   * {

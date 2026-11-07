@@ -38,6 +38,31 @@ const ICONS = {
     </>
   ),
   back: <path d="M15 5l-7 7 7 7" />,
+  close: <path d="M6 6l12 12M18 6 6 18" />,
+  backspace: (
+    <>
+      <path d="M9 5h10.5a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5H9l-6-7z" />
+      <path d="M12 9.5l5 5M17 9.5l-5 5" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="M3.5 7l8.5 6 8.5-6" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="3.8" />
+      <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
+    </>
+  ),
   chevron: <path d="M9 5l7 7-7 7" />,
   clock: (
     <>

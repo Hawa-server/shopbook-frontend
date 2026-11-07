@@ -348,13 +348,11 @@ The free server sleeps when unused and can take up to a minute to wake. So when 
 
 Computers store numbers like 0.29 inexactly: `0.29 * 100` gives `28.999999999999996`. For money that's unacceptable, so the app never does that. Amounts are whole **minor units** (pesewas for the cedi), and `src/lib/money.js` reads typed amounts **by their digits**: "120.5" becomes the digits "120" and "50", joined into 12050. Formatting goes the other way, also with digits. The tests (`money.test.js`) include the classic traps (0.29, 1.15, 4.35). Quantities work the same way: yards are stored as **half-yard units** (5 = "2.5 yards").
 
-**Whose currency?** Since BE4.5 every business has its own currency, and `api.md` sends its writing rules with the business (`me.businesses[].currency`): the symbol, how many decimals (0, 2 or 3), whether the symbol comes before or after, the space, and the decimal and group separators. `formatMoney(minor, currency)` follows those rules with whole-number arithmetic only, and `parseMoney(text, currency)` reads typed amounts with the same separators (so "1.234,56" works where a comma is the decimal point, and a currency with no decimals refuses "15.5"). We deliberately don't use the browser's `Intl.NumberFormat`: it can write the same amount differently on two phones, and a receipt must read exactly like the server's. A negative amount gets "-" in front ("-GH₵ 5.00"), the same way the server writes it.
-
 Amounts are shown with a **non-breaking space** after the symbol, so "GH₵ 1,000.00" can never be split over two lines.
 
 ### Languages: one list of words per language
 
-All the app's words are in one dictionary per language (`src/i18n/en.js`, `src/i18n/tw.js`), under the same keys. The list of languages is `src/i18n/languages.js`: adding one is a new dictionary file plus one line there. Each language is `complete` or `draft` (as in `api.md`'s `GET /api/reference`); a draft language may miss some texts, and English is shown for those. Screens ask for `t('nav.sell')`, never type words themselves. The chosen language is saved in the phone's `shopbook-app` database, so switching it changes every screen at once and survives closing the app. `npm run check:i18n` checks every dictionary against English: a complete language must have every key; no language may have keys English lacks or empty texts; and `{placeholders}` must match (a Twi line missing `{n}` would drop a number from the screen). Missing keys in a draft language are listed, not failed.
+All the app's words are in `src/i18n/en.js` and `src/i18n/tw.js`, under the same keys. Screens ask for `t('nav.sell')`, never type words themselves. The chosen language is saved in the phone's `shopbook-app` database, so switching it changes every screen at once and survives closing the app. `npm run check:i18n` checks the dictionaries against each other, including that `{placeholders}` match (a Twi line missing `{n}` would drop a number from the screen).
 
 The app's own name (**Ledga**) is in exactly one place, `app.name`; the install name and the page title read it at build time.
 
@@ -411,3 +409,231 @@ Every Twi line in `src/i18n/tw.js` is a **draft written by Claude Code** and nee
 The words most likely to need a better choice: "Stock" (Nneɛma just means "things"), "More", "Connecting…", "Not sent yet", and whether traders would rather see English words like "server" and "version".
 
 **Length matters too.** On a 360px phone with large text, tab labels have about 70px each: "Adetɔfoɔ" and "Nneɛma" then break mid-word onto a second line, and "Ɛrekɔ so ahyɛ ase…" wraps to four lines in the header. Nothing overlaps, but shorter words (one short word per tab, two or three for "Connecting…") will read better.
+
+---
+
+## BE5 Part A: phones and signed requests
+
+### Why a phone needs its own key
+
+A sign-in cookie proves "someone signed in as Ama". If it were ever copied off a phone, whoever has it could act as Ama from anywhere. So each phone also gets its **own key pair**, made on the phone by the browser (Web Crypto). The **private key can't be read out**, not even by the app's own code; it can only be asked to sign. The server keeps the **public key**, which can only check signatures.
+
+Every business request is then **signed** (`src/lib/deviceSigning.js`). A copied cookie on another machine is useless: it has no key to sign with. A device ID on its own proves nothing either; only a valid signature does.
+
+**Honest limit:** if malicious script ever ran *inside* the app, it could ask the browser to sign. The app's strict Content-Security-Policy (no outside scripts) is what prevents that.
+
+### Registering a phone (enrolment)
+
+This is the one moment a stolen cookie could be turned into a "trusted" phone, so it needs more than a sign-in:
+
+1. **A challenge:** `POST /api/devices/challenge` gives 32 random bytes, valid 5 minutes, usable once (only their hash is stored, in `DeviceChallenge`).
+2. **Proof of the key:** the phone signs the challenge with its new private key.
+3. **The password:** `POST /api/devices` sends the public key, the signed challenge and the person's **current password**. The server checks all of it, then gives the phone its **device code** (3 characters such as `K7M`, from 29 letters and digits that can't be confused). Codes are never reused, not even after a phone is revoked, so receipt numbers like `K7M-0042` can never repeat.
+4. The owner gets an email: "A new phone was added".
+
+A device ID that already exists is refused (`DEVICE_ID_TAKEN`): a phone never swaps its key. A new key means a new device.
+
+### What the server checks on every signed request (`requireDevice`)
+
+The order is session → business (`requireAuth`) → **device** → role → handler:
+
+1. **The device** must be this person's, in this business, and active. Anything else gets the same answer, `DEVICE_NOT_REGISTERED`, so nobody can probe someone else's phones.
+2. **Not locked:** after 20 failed signatures in 15 minutes the phone is blocked for 15 minutes, and the owner sees it. Failures count **only** once the device is confirmed to be the person's own, so one member can't lock out another member's phone.
+3. **The time** (`X-Signed-At`) must be within 5 minutes of the server's clock. Phones with a wrong clock still work: every answer carries `X-Server-Time`, and the phone signs with its clock **corrected** by the difference.
+4. **The signature** covers the method, the exact path and query, the SHA-256 of the exact body bytes, the device, the business, the time and a nonce. Changing any of them after signing breaks it.
+5. **The nonce** (16 random bytes) is saved in `DeviceRequestNonce` in its own short transaction, **before** the request's work. A unique key means two copies of the same request can't both pass, even at the same instant (`NONCE_REUSED`). Expired nonces of that phone are deleted on the same request: the one allowed "housekeeping" delete.
+
+### Revoking a phone
+
+The owner can revoke a lost or stolen phone (`DELETE /api/devices/:deviceId`). Its next request gets `DEVICE_REVOKED`, and the app wipes that business's data. Removing a member from the team revokes all their phones for that business in the same transaction.
+
+### Trying signed endpoints yourself: `npm run dev:sign`
+
+Postman can't sign with a key by itself, so `scripts/dev-sign.js` does it with a **throwaway test key** (kept in `.dev-device-key.json`, Git-ignored; the script refuses to run with `NODE_ENV=production`):
+
+1. `npm run dev:sign -- new-key`
+2. In Postman: `POST /api/devices/challenge` (signed in, `X-Business`), then `npm run dev:sign -- register-body --challenge <challenge>`. Paste the JSON into `POST /api/devices`, typing your password where it says so.
+3. For each signed request: `npm run dev:sign -- headers --method GET --path /api/team --business <id>`, and copy the four headers into Postman. Each set works once and for 5 minutes.
+
+---
+
+## FE2: sign up, sign in, PIN
+
+### Who is signed in, even offline
+
+When someone signs in, the server's answer (`me`: the person, their businesses and roles, whether they accepted the terms) is saved in the phone's `shopbook-app` database (`src/auth/session.js`). That copy is what lets the app open **with no internet**, needing only the PIN. When the phone is online, the app asks the server again (`GET /api/auth/me`) on opening and on reconnecting, and replaces the copy.
+
+The session itself is an HTTP-only cookie the app can't read. If the server says the session has ended (`401 NOT_SIGNED_IN`: 30 days unused, 90 days old, or the password changed elsewhere), the app **keeps everything** and only shows "Sign in again" above the tabs. Selling carries on.
+
+### What happens after signing in, in order
+
+`src/auth/nextStep.js` decides, from `me` and the phone's PIN record, which screen comes next: replace a temporary password → accept the current terms → answer invitations → "not part of any business" (if there's none) → **set a PIN** (required on each phone) → the PIN lock → the app. It's a small pure function with its own tests, so the order can't drift.
+
+### The PIN
+
+- A 4-digit PIN, set per person on each phone, **never sent anywhere**. Only a PBKDF2-SHA-256 hash is kept (random salt, 150,000 iterations; `src/crypto/pin.js`).
+- A PIN has only 10,000 possibilities, so the hash alone wouldn't stop someone who copied the phone's storage. What protects it is the **5-tries rule**: each wrong PIN is counted on the phone *before* the screen reacts (closing the app can't reset it), and the fifth locks the app until the person signs in with their **password, online**. Then they choose a new PIN. Nothing on the phone is deleted.
+- The lock comes back when the app opens and after **5 minutes in the background**.
+
+### A different person on the same phone
+
+If someone else signs in on a phone, the previous person's downloaded records (for an owner, cost prices and profit) must not be left for them to see. The rule (decided 6 Nov 2026): a different person may sign in **only when the previous person has nothing unsent**, with no way around it ("Ama has 3 records not sent. Connect to the internet to send them first."). Then the previous person's business data is removed; that removal arrives in FE3 with the sync engine.
+
+### Email links and their tokens
+
+Reset and confirm links carry a one-time token in the address. `src/lib/addressToken.js` takes it out **before the app even starts drawing** (`history.replaceState`), keeps it only in memory, and forgets it once used. So it never stays in the address bar, the history, or a screenshot.
+
+### The privacy notice and terms, safely
+
+The server sends them as Markdown. Instead of turning that into HTML (which could carry code), `src/lib/markdown.js` turns it into a plain tree of headings, paragraphs, lists, bold and italic, and React draws that tree as ordinary text. **Links are never clickable**: an `https:` address is shown after its words, and anything else (`javascript:`, `data:`…) is dropped. Tests prove no link can come out.
+
+### Errors in words
+
+`src/auth/formErrors.js` turns any failed request into words under the right field, or above the button, using only the error **code** from `api.md` (never the server's wording, which is English and may change). No internet, a timeout and a server error all say "try again"; a wrong login always says the same "Wrong phone number, email or password."
+
+### Twi to check (FE2)
+
+These lines were added in FE2. Like FE1's, they are drafts by Claude Code for a Twi speaker to check.
+
+| Key | English | Draft Twi |
+|---|---|---|
+| `common.cancel` | Cancel | Gyae |
+| `common.close` | Close | To mu |
+| `common.save` | Save | Kora so |
+| `common.wait` | Please wait… | Mesrɛ wo twɛn… |
+| `field.show` | Show | Kyerɛ |
+| `field.hide` | Hide | Fa sie |
+| `role.owner` | owner | wura |
+| `role.manager` | manager | ɔhwɛfoɔ |
+| `role.associate` | sales associate | adetɔnfoɔ |
+| `welcome.lead` | Your shop's sales, stock and debts, safe on your phone, even without internet. | Wo sotɔɔ no adetɔn, nneɛma ne ɛka, wɔ wo fon so dwoodwoo, mpo a intanɛt nni hɔ. |
+| `welcome.signIn` | Sign in | Hyɛn mu |
+| `welcome.createAccount` | Create a business account | Bue adwumayɛ akawnt |
+| `signIn.title` | Sign in | Hyɛn mu |
+| `signIn.againTitle` | Sign in again | Hyɛn mu bio |
+| `signIn.login` | Phone number or email | Fon nɔma anaa email |
+| `signIn.password` | Password | Ahintasɛm |
+| `signIn.button` | Sign in | Hyɛn mu |
+| `signIn.forgot` | Forgot password? | Wo werɛ afi wo ahintasɛm? |
+| `signIn.reason.sessionEnded` | Your sign-in has ended. Sign in again to send your records. Everything on this phone is kept. | Wo hyɛn-mu no aba awieeɛ. Hyɛn mu bio na wo nkrataa nkɔ. Biribiara a ɛwɔ fon yi so wɔ hɔ. |
+| `signIn.reason.forgotPin` | Sign in with your password, then choose a new PIN. | Fa wo ahintasɛm hyɛn mu, na afei paw PIN foforɔ. |
+| `signIn.reason.lockedOut` | Sign in with your password, then choose a new PIN. | Fa wo ahintasɛm hyɛn mu, na afei paw PIN foforɔ. |
+| `takeOver.blocked` | {name} has {n} records not sent. Connect to the internet to send them first. | {name} wɔ nkrataa {n} a wɔmmɛmanee. Fa intanɛt bɔ ho na fa kɔ kane. |
+| `signUp.title` | Create account | Bue akawnt |
+| `signUp.you` | You | Wo |
+| `signUp.name` | Your name | Wo din |
+| `signUp.phone` | Phone number | Fon nɔma |
+| `signUp.phoneHint` | For example 024 123 4567 | Sɛ nhwɛsoɔ 024 123 4567 |
+| `signUp.email` | Email | Email |
+| `signUp.business` | Your business | Wo adwuma |
+| `signUp.businessName` | Business name | Adwuma no din |
+| `signUp.country` | Country | Ɔman |
+| `signUp.passwordSection` | Password | Ahintasɛm |
+| `signUp.password` | Choose a password | Paw ahintasɛm |
+| `signUp.passwordHint` | At least 8 characters | Nkyerɛwdeɛ 8 anaa nea ɛboro saa |
+| `signUp.termsSection` | Privacy and terms | Kokoam ne nhyehyɛeɛ |
+| `signUp.readPrivacy` | Read the privacy notice | Kenkan kokoam nkra no |
+| `signUp.readTerms` | Read the terms | Kenkan nhyehyɛeɛ no |
+| `signUp.accept` | I accept the privacy notice and terms | Megye kokoam nkra ne nhyehyɛeɛ no tom |
+| `signUp.button` | Create account | Bue akawnt |
+| `legal.privacy` | Privacy notice | Kokoam nkra |
+| `legal.terms` | Terms of use | Nhyehyɛeɛ |
+| `forgot.title` | Forgot password | Wo werɛ afi ahintasɛm |
+| `forgot.lead` | Type your phone number or email. If your email is confirmed, we will send you a link to choose a new password. | Kyerɛw wo fon nɔma anaa email. Sɛ wo email no ayɛ pi a, yɛbɛsoma link ama wo ma woapaw ahintasɛm foforɔ. |
+| `forgot.button` | Send the link | Soma link no |
+| `forgot.sent` | If that account has a confirmed email, we've sent a link. Check your inbox and spam. | Sɛ saa akawnt no wɔ email a ayɛ pi a, yɛasoma link. Hwɛ wo inbox ne spam. |
+| `forgot.noEmail` | No email? Ask your shop owner to reset your password. | Wonni email? Ka kyerɛ wo sotɔɔ wura ma ɔnsesa wo ahintasɛm. |
+| `forgot.backToSignIn` | Back to sign in | San kɔ hyɛn-mu |
+| `reset.title` | New password | Ahintasɛm foforɔ |
+| `reset.newPassword` | New password | Ahintasɛm foforɔ |
+| `reset.again` | New password again | Ahintasɛm foforɔ no bio |
+| `reset.button` | Save new password | Kora ahintasɛm foforɔ no |
+| `reset.done` | Password changed. Sign in again. | Wɔasesa ahintasɛm no. Hyɛn mu bio. |
+| `reset.signIn` | Sign in | Hyɛn mu |
+| `reset.newLink` | Ask for a new link | Bisa link foforɔ |
+| `confirm.title` | Confirm email | Si email so dua |
+| `confirm.done` | Email confirmed. | Email no ayɛ pi. |
+| `confirm.tryAgain` | Try again | San bɔ mmɔden |
+| `confirm.continue` | Continue | Toa so |
+| `ownPassword.title` | Choose your own password | Paw wo ankasa ahintasɛm |
+| `ownPassword.lead` | Your shop owner gave you a temporary password. Choose your own now. | Wo sotɔɔ wura de ahintasɛm a ɛnnim kyɛ maa wo. Paw wo deɛ seesei. |
+| `ownPassword.temporary` | Temporary password | Ahintasɛm a ɛnnim kyɛ |
+| `ownPassword.button` | Save my password | Kora me ahintasɛm |
+| `terms.title` | Privacy and terms | Kokoam ne nhyehyɛeɛ |
+| `terms.lead` | Please read the privacy notice and the terms, then accept them to continue. | Mesrɛ wo kenkan kokoam nkra ne nhyehyɛeɛ no, na gye tom na toa so. |
+| `terms.button` | Continue | Toa so |
+| `invitations.title` | Invitations | Nsato |
+| `invitations.text` | {business} invited you to join as {role}. | {business} to wo frɛ sɛ bɛyɛ {role}. |
+| `invitations.accept` | Accept | Gye tom |
+| `invitations.decline` | Decline | Mpene |
+| `invitations.later` | Decide later | Akyiri yi |
+| `noBusiness.text` | You're not part of any business any more. Ask a shop owner to add you. | Wonka adwuma biara ho bio. Ka kyerɛ sotɔɔ wura bi ma ɔmfa wo nka ho. |
+| `session.ended` | Your sign-in has ended. Sign in again to send your records. | Wo hyɛn-mu no aba awieeɛ. Hyɛn mu bio na wo nkrataa nkɔ. |
+| `session.signInAgain` | Sign in again | Hyɛn mu bio |
+| `pin.setTitle` | Set your PIN | Hyɛ wo PIN |
+| `pin.choose` | Choose a 4-digit PIN | Paw PIN a ɛyɛ nɔma 4 |
+| `pin.again` | Type the same PIN again | Kyerɛw PIN no ara bio |
+| `pin.mismatch` | The PINs didn't match. Choose your PIN again. | PIN abien no nyɛ pɛ. Paw wo PIN bio. |
+| `pin.why` | The PIN opens the app on this phone, even without internet. | PIN no bue app no wɔ fon yi so, mpo a intanɛt nni hɔ. |
+| `pin.lockTitle` | Enter your PIN | Kyerɛw wo PIN |
+| `pin.enter` | Enter your 4-digit PIN | Kyerɛw wo PIN a ɛyɛ nɔma 4 |
+| `pin.wrong` | Wrong PIN. {n} tries left. | PIN no nyɛ. Aka {n}. |
+| `pin.lockedOut` | Too many wrong PINs. Sign in with your password to open the app (this needs internet). Nothing on this phone is lost. | PIN a ɛnyɛ no adɔɔso. Fa wo ahintasɛm hyɛn mu na bue app no (ɛhia intanɛt). Biribiara nyera wɔ fon yi so. |
+| `pin.forgot` | Forgot PIN? Sign in with your password | Wo werɛ afi PIN? Fa ahintasɛm hyɛn mu |
+| `pin.signInWithPassword` | Sign in with your password | Fa wo ahintasɛm hyɛn mu |
+| `pin.delete` | Delete | Pepa |
+| `pin.entered` | {n} of 4 digits entered | Nɔma {n} wɔ 4 mu |
+| `account.title` | My account | Me akawnt |
+| `account.noEmail` | No email | Email nni hɔ |
+| `account.notConfirmed` | Email not confirmed. | Email no nnya nyɛɛ pi. |
+| `account.pendingEmail` | Waiting for you to confirm {email}. | Ɛretwɛn wo ma wosi {email} so dua. |
+| `account.sendLink` | Send the link again | Soma link no bio |
+| `account.linkSent` | We've sent a new link. Check your inbox and spam. | Yɛasoma link foforɔ. Hwɛ wo inbox ne spam. |
+| `account.changePassword` | Change password | Sesa ahintasɛm |
+| `account.changePhone` | Change phone number | Sesa fon nɔma |
+| `account.changeEmail` | Change email | Sesa email |
+| `account.addEmail` | Add email | Fa email ka ho |
+| `account.currentPassword` | Current password | Ahintasɛm a wode di dwuma seesei |
+| `account.newPhone` | New phone number | Fon nɔma foforɔ |
+| `account.newEmail` | New email | Email foforɔ |
+| `account.emailNote` | We will send a link to the new email. Your old email keeps working until you tap it. | Yɛbɛsoma link akɔ email foforɔ no so. Wo email dada no bɛyɛ adwuma kɔsi sɛ wobɛmia so. |
+| `account.otherPhones` | This signs you out on your other phones. This phone stays signed in. | Yei bɛyi wo afi wo fon afoforɔ no so. Fon yi deɛ, wobɛtena mu. |
+| `account.done.password` | Password changed. | Wɔasesa ahintasɛm no. |
+| `account.done.phone` | Phone number changed. | Wɔasesa fon nɔma no. |
+| `account.done.email` | Check your new email and tap the link to confirm it. | Hwɛ wo email foforɔ no na mia link no so si so dua. |
+| `account.signOut` | Sign out | Fi mu |
+| `account.signOutTitle` | Sign out? | Wopɛ sɛ wofi mu? |
+| `account.signOutText` | Your records stay on this phone. You will need your password to sign in again. | Wo nkrataa bɛtena fon yi so. Wobɛhia wo ahintasɛm na woahyɛn mu bio. |
+| `account.signOutUnsent` | {n} records are not sent yet. They stay on this phone, but they will only be sent after you sign in again. | Nkrataa {n} nnya nkɔeɛ. Wɔbɛtena fon yi so, nanso wɔbɛsoma wɔn bere a woahyɛn mu bio nko ara. |
+| `account.signOutSure` | Are you sure? {n} records are still not sent. | Wo ho akokwaw? Nkrataa {n} nnya nkɔeɛ. |
+| `account.signOutAnyway` | Sign out anyway | Fi mu sa ara |
+| `errors.offline` | No internet. Connect and try again. | Intanɛt nni hɔ. Fa bɔ ho na san bɔ mmɔden. |
+| `errors.temporary` | The server isn't answering yet. Try again in a minute. | Server no nnya nnyee so. San bɔ mmɔden simma baako mu. |
+| `errors.rateLimited` | Too many tries. Wait a few minutes and try again. | Wo bɔɔ mmɔden pii. Twɛn simma kakra na san bɔ mmɔden. |
+| `errors.unexpected` | Something went wrong. Try again. | Biribi ankɔ yie. San bɔ mmɔden. |
+| `errors.code.WRONG_LOGIN` | Wrong phone number, email or password. | Fon nɔma, email anaa ahintasɛm no nyɛ. |
+| `errors.code.WRONG_PASSWORD` | That's not your current password. | Ɛnyɛ ahintasɛm a wode di dwuma seesei no. |
+| `errors.code.PHONE_TAKEN` | This phone number already has an account. | Fon nɔma yi wɔ akawnt dada. |
+| `errors.code.EMAIL_TAKEN` | This email already has an account. | Email yi wɔ akawnt dada. |
+| `errors.code.INVALID_TOKEN` | This link has expired or has already been used. | Link yi abɔ ne bere so anaa wɔde adi dwuma dada. |
+| `errors.code.TERMS_VERSION_MISMATCH` | The terms have just changed. Please read them again and accept. | Nhyehyɛeɛ no asesa seesei ara. Mesrɛ wo kenkan bio na gye tom. |
+| `errors.code.NOTHING_TO_CONFIRM` | Your email is already confirmed. | Wo email ayɛ pi dada. |
+| `errors.code.EMAIL_NOT_SENT` | Couldn't send the email. Try again later. | Yɛantumi ansoma email no. San bɔ mmɔden akyiri yi. |
+| `errors.code.FORBIDDEN` | Your role can't do this. | Wo dibea ntumi nyɛ yei. |
+| `errors.field.generic` | Check this and try again. | Hwɛ yei na san bɔ mmɔden. |
+| `errors.field.name` | Enter your name (up to 60 letters). | Kyerɛw wo din (nkyerɛwdeɛ 60 mu). |
+| `errors.field.phone` | Enter a valid mobile number, for example 024 123 4567. | Kyerɛw fon nɔma a ɛyɛ, sɛ nhwɛsoɔ 024 123 4567. |
+| `errors.field.newPhone` | Enter a valid mobile number that is different from your current one. | Kyerɛw fon nɔma a ɛyɛ na ɛnyɛ deɛ wowɔ seesei. |
+| `errors.field.email` | Enter a valid email address. | Kyerɛw email a ɛyɛ. |
+| `errors.field.newEmail` | Enter a valid email that is different from your current one. | Kyerɛw email a ɛyɛ na ɛnyɛ deɛ wowɔ seesei. |
+| `errors.field.businessName` | Enter the business name (up to 60 letters). | Kyerɛw adwuma no din (nkyerɛwdeɛ 60 mu). |
+| `errors.field.password` | Use 8 to 128 characters, and not a very common password. | Fa nkyerɛwdeɛ 8 kɔsi 128, na ɛnyɛ ahintasɛm a nnipa pii de di dwuma. |
+| `errors.field.newPassword` | Use 8 to 128 characters, not a very common password, and not your current one. | Fa nkyerɛwdeɛ 8 kɔsi 128, ɛnyɛ deɛ nnipa pii de di dwuma, na ɛnyɛ deɛ wowɔ seesei. |
+| `errors.field.passwordEmpty` | Enter your password. | Kyerɛw wo ahintasɛm. |
+| `errors.field.passwordsDiffer` | The two passwords don't match. | Ahintasɛm abien no nyɛ pɛ. |
+| `errors.field.currentPassword` | Enter your current password. | Kyerɛw ahintasɛm a wode di dwuma seesei. |
+| `errors.field.login` | Enter your phone number or email. | Kyerɛw wo fon nɔma anaa email. |
+| `errors.field.language` | Choose a language. | Paw kasa. |
+| `errors.field.country` | Choose a country. | Paw ɔman. |
+| `errors.field.acceptTerms` | Tick the box to accept the privacy notice and terms. | Hyɛ ahwɛ no so na gye kokoam nkra ne nhyehyɛeɛ no tom. |
+

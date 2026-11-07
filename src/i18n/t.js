@@ -24,7 +24,12 @@ export function LanguageProvider({ children }) {
 
   const setLanguage = useCallback((next) => {
     if (!LANGUAGE_TAGS.includes(next)) throw new Error(`Unknown language ${next}`);
-    return setAppValue('language', next);
+    // Saved on the phone at once; also marked "to send" so the AuthProvider tells the server
+    // (PATCH /api/auth/me) when signed in and online.
+    return appDb.transaction('rw', appDb.kv, async () => {
+      await setAppValue('language', next);
+      await setAppValue('pendingLanguage', next);
+    });
   }, []);
 
   const value = useMemo(

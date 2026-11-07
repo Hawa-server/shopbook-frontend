@@ -19,3 +19,8 @@ export function translate(language, key, params) {
   if (!params) return text;
   return text.replace(/\{(\w+)\}/g, (whole, name) => (name in params ? String(params[name]) : whole));
 }
+
+// True if English has text for `key` (so a screen can choose a specific message or a general one).
+export function hasText(key) {
+  return key in dictionaries[DEFAULT_LANGUAGE];
+}
