@@ -12,7 +12,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const MARKERS = ['Dev: sync test', '/dev/sync', 'Save a change the server will refuse', 'data-test-build-banner', 'TEST BUILD</div>'];
+const MARKERS = ['Dev: sync test', '/dev/sync', 'Save a change the server will refuse', 'Team and phones (owner, test only)', 'data-test-build-banner', 'TEST BUILD</div>'];
 const target = process.argv[2] ?? 'dist';
 
 // Reads every text file of a local build folder: returns [{ name, text }].
