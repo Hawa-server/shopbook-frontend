@@ -3,6 +3,7 @@
 //
 // It only exists in `npm run dev` and in a temporary test build (VITE_SYNC_TEST_SCREEN=1, for the real-phone
 // test). In any other build App.jsx's `__SYNC_TEST_SCREEN__` is `false`, so this file is left out entirely.
+// The owner also gets team and phone actions here (DevTeamTools.jsx) until FE4's real screens.
 // Being a developer tool, its words are plain English rather than dictionary keys.
 // To be removed in FE12, as the plan says.
 
@@ -17,9 +18,11 @@ import Screen from '../../components/Screen.jsx';
 import Field from '../../components/Field.jsx';
 import Button from '../../components/Button.jsx';
 import Banner from '../../components/Banner.jsx';
+import DevTeamTools from './DevTeamTools.jsx';
 
 export default function DevSyncScreen() {
   const { openBusiness } = useAuth();
+  const isOwner = openBusiness?.role === 'owner';
   const { businessId, syncNow, outcome, running } = useSync();
   const [note, setNote] = useState('');
   const [phone, setPhone] = useState('');
@@ -28,8 +31,8 @@ export default function DevSyncScreen() {
   const data = useLiveQuery(async () => {
     if (!businessId) return null;
     const db = getBusinessDb(businessId);
-    const [server, outbox] = await Promise.all([db.settings.get('business'), db.outbox.orderBy('seq').toArray()]);
-    return { server, outbox, shown: settingsWithPendingChanges(server, outbox) };
+    const [server, outbox, device] = await Promise.all([db.settings.get('business'), db.outbox.orderBy('seq').toArray(), db.meta.get('device')]);
+    return { server, outbox, shown: settingsWithPendingChanges(server, outbox), deviceCode: device?.value?.deviceCode ?? null };
   }, [businessId]);
 
   // Saves a settings.update with its outbox operation (exactly like a real screen will).
@@ -61,6 +64,7 @@ export default function DevSyncScreen() {
         Save a change the server will refuse
       </Button>
       <Button variant="quiet" onClick={syncNow}>Sync now</Button>
+      {isOwner && <DevTeamTools businessId={businessId} myDeviceCode={data?.deviceCode} />}
     </Screen>
   );
 }
