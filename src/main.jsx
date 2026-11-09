@@ -11,6 +11,7 @@ import { SyncProvider } from './sync/SyncProvider.jsx';
 import { setClockPersistence } from './api/clock.js';
 import { getAppValue, setAppValue } from './db/appDb.js';
 import App from './App.jsx';
+import TestBuildBanner from './components/TestBuildBanner.jsx';
 import './index.css';
 import { captureTokenAtStartup } from './lib/addressToken.js';
 
@@ -27,6 +28,7 @@ createRoot(document.getElementById('root')).render(
         <HealthProvider>
           <AuthProvider>
             <SyncProvider>
+              {__TEST_BUILD_BANNER__ && <TestBuildBanner />}
               <App />
             </SyncProvider>
           </AuthProvider>

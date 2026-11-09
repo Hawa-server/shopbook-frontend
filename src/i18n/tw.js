@@ -262,4 +262,7 @@ export default {
   'errors.code.DEVICE_KEY_INVALID': 'Fon no antumi anyɛ ne safoa. San bɔ mmɔden.',
   'errors.code.DEVICE_ID_TAKEN': 'San bɔ mmɔden kyerɛw ne din.',
   'errors.code.NO_BUSINESS': 'Wonka adwuma biara ho bio.',
+
+  // The temporary test build's banner
+  'testBuild.banner': 'TEST BUILD: sɔhwɛ nko ara, ɛnyɛ sotɔɔ nkrataa ankasa',
 };

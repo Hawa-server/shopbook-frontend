@@ -23,7 +23,7 @@ export default function MoreScreen() {
     <Screen title={t('more.title')}>
       <AccountRow />
       <MoreRow icon="sync" label={t('syncStatus.title')} to="/more/sync" />
-      {import.meta.env.DEV && <MoreRow icon="info" label="Dev: sync test" to="/dev/sync" />}
+      {__SYNC_TEST_SCREEN__ && <MoreRow icon="info" label="Dev: sync test" to="/dev/sync" />}
       <LanguageCard />
       <AboutCard />
     </Screen>

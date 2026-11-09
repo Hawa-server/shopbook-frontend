@@ -736,6 +736,9 @@ The sync engine has to survive real life before any feature screen is built on i
 - [ ] The backend's **proxy re-check** is done (server plan, BE1 Part B, "Proxy hops, measured twice") and `TRUST_PROXY` updated.
 - [ ] The backend's **fix for the pull** (`500 INTERNAL_ERROR` on every page with rows, found on 8 Nov 2026) is deployed on Render.
 - [ ] Two Android phones (or one phone and a laptop browser), each with the app installed from the Vercel address, and you know the owner's phone number and password.
+- [ ] **No real trader is using the app.** The test build is only allowed while that's true.
+- [ ] The **temporary test build** is live at the Vercel address (`VITE_SYNC_TEST_SCREEN=1`): every screen shows a "TEST BUILD" banner, and More has "Dev: sync test".
+- [ ] A test shop with **no products** (the app can't store product rows until FE5; it would stop pulling and say "Update the app").
 
 ### Rehearsal on the computer (8 Nov 2026)
 
@@ -751,7 +754,7 @@ Three separate Chrome profiles played three phones (the owner on phone A and pho
 | 1. Both offline, a different change on each, then reconnect: everything on both, once | **Passed**: both phones show both changes; version 19 → 21 |
 | 2. The network cut while sending (the server saved it, the answer was lost) | **Passed**: the change stayed in the outbox, was sent again and applied once; version 23 → 24 |
 | 3. The app closed in the middle of a save | **Passed**: after reopening, the change was whole and waiting, then sent; version 25 |
-| 4. The same setting changed on both phones offline: the last one sent wins everywhere | **Passed**: both phones ended with phone B's value; version 21 → 23. `ChangeLog` (read by the backend project, 9 Nov): phone B's change (v22 → v23) is marked `conflict: true`. **The app plan says "the earlier one" is marked: see "Open question" below** |
+| 4. The same setting changed on both phones offline: the last one sent wins everywhere | **Passed**: both phones ended with phone B's value; version 21 → 23. `ChangeLog` (read by the backend project, 9 Nov): phone B's change (v22 → v23) is marked `conflict: true`, as the plan now says |
 | 5a. A person removed by the owner: wiped, and the notice counts the unsent records | **Passed**: "You no longer have access to FE3.5 Test Shop, so its records were removed from this phone. 1 record that wasn't sent was removed. Tell the shop owner." (wording corrected after the run); no business database left on the phone |
 | 5b. A phone revoked by the owner: wiped on its next sync | **Passed** |
 | 6. Session ended while offline: kept, sent after signing in again | **Passed**: "Sign in again" shown, the change kept, sent once, and the other phone received it; version 25 → 26 |
@@ -765,25 +768,27 @@ Three separate Chrome profiles played three phones (the owner on phone A and pho
 - While syncs keep failing, the header chip shows "Connecting…" until one succeeds, so a phone never looks up to date when it can't fetch other phones' changes.
 - When the owner removes someone, their app can learn it from "who am I" (`GET /api/auth/me`) **before** any sync gets `ACCESS_REMOVED`. It now wipes that business's data in that case too, with the same notice and unsent count (`src/auth/session.js`, tested in `session.test.js`). Before this fix, the removed person saw "You're not part of any business any more" but the shop's records stayed on their phone.
 
-### Open question: which change gets the conflict mark?
-
-The app plan (FE3.5) says `ChangeLog` marks "the earlier one" `conflict: true`. The server marks the **later** change, the one that arrived with an out-of-date `baseVersion` (it overwrote something it hadn't seen). `api.md` only says the server "records that as a conflict in its history". Waiting for a decision on which to update.
-
 ### On real phones (waiting for me)
 
-Use the deployed app on two phones signed in as the **owner** (phone A and phone B), and a third person as a sales associate for 5a. "Airplane mode" means the phone's own airplane mode. Each change is made in More → Business settings once it exists; until then a development build is needed for the test screen (ask Claude Code to prepare one).
+Use the deployed app on two phones signed in as the **owner** (phone A and phone B), and a third person as a sales associate for 5a. "Airplane mode" means the phone's own airplane mode. Changes are made with the test screen (More → "Dev: sync test") in the temporary test build.
 
 | # | Steps | Pass when | Status |
 |---|---|---|---|
 | 1 | Both phones in airplane mode. Phone A changes the receipt note, phone B the shop phone. Turn airplane mode off on both, open the app, wait a minute (or Sync now). | Both phones show **both** changes; Sync status on both says "All records sent"; nothing appears twice. | Waiting for me |
 | 2 | On phone A, make a change, tap Sync now, and switch airplane mode **on** while the chip says "Sending…". Then switch it off. | The change is on the server once (phone B shows it once); phone A's outbox empties; nothing in "Needs attention". | Waiting for me |
 | 3 | On phone A, make a change and close the app straight away (swipe it away). Open it again. | The change is either fully there (and then sent) or not there at all; never half a record. | Waiting for me |
-| 4 | Both phones in airplane mode. Both change the **same** setting to different values. Reconnect phone A first, wait for it to sync, then phone B. | Both phones end with **phone B's** value. The backend confirms `ChangeLog` has the conflict mark (which change it's on: see "Open question" above). | Waiting for me |
+| 4 | Both phones in airplane mode. Both change the **same** setting to different values. Reconnect phone A first, wait for it to sync, then phone B. | Both phones end with **phone B's** value. The backend confirms `ChangeLog` marks **phone B's** change `conflict: true`: the later change, the one that arrived with an out-of-date `baseVersion`. It still wins. | Waiting for me |
 | 5a | The owner adds a sales associate; the associate signs in on a third phone (own password, terms, PIN). The associate goes into airplane mode and makes a change. The owner removes the associate. The associate turns airplane mode off. | The associate's phone says it no longer has access and **how many unsent records were removed**; the business's data is gone from that phone. | Waiting for me |
 | 5b | The owner revokes phone B (once the phones screen exists in FE4; until then, ask Claude Code). Phone B opens the app with internet. | Phone B says "This phone was removed from…" and the business's data is gone from it. | Waiting for me |
 | 6 | Make phone A's session end while it's in airplane mode (for example change the password on phone B, which signs out other phones), then on phone A make a change offline. Turn airplane mode off. | Phone A keeps working and shows "Sign in again"; after signing in, the change is sent once. | Waiting for me |
 | 7 | With phone A in airplane mode and a change not sent, publish a new version of the app; when phone A shows "A new version is ready", tap **Update now**. Then turn airplane mode off. | After the update the change is still "not sent", then it's sent once; nothing is lost. | Waiting for me |
 | 8 | On the associate's phone, try to change a business setting (development build). | It's refused and appears in "Needs attention" as "Not accepted", with "Tell the shop owner." | Waiting for me |
+
+### After the phone test
+
+- [ ] **Undo the test build the same day**, even if some cases still need repeating: remove `VITE_SYNC_TEST_SCREEN` in Vercel and redeploy.
+- [ ] Check the live address: `npm run check:no-test-screen -- https://<the Vercel address>` must say `OK`.
+- [ ] On each phone, tap **Update now** and check the "TEST BUILD" banner has gone.
 
 When you've done them, paste what you saw and Claude Code will record the results here.
 
@@ -803,3 +808,9 @@ Texts with a number now have one form for 1 and one for every other number. `t('
 | `account.signOutSure.other` | Are you sure? {count} records are still not sent. | Wo ho akokwaw? Nkrataa {count} nnya nkɔeɛ. | Waiting for a Twi speaker |
 | `wipe.unsentLost.one` | {count} record that wasn't sent was removed. Tell the shop owner. | Wɔayi krataa {count} a wɔmmɛmanee. Ka kyerɛ sotɔɔ wura no. | Waiting for a Twi speaker |
 | `wipe.unsentLost.other` | {count} records that weren't sent were removed. Tell the shop owner. | Wɔayi nkrataa {count} a wɔmmɛmanee. Ka kyerɛ sotɔɔ wura no. | Waiting for a Twi speaker |
+
+### Twi to check (test build)
+
+| Key | English | Draft Twi | Checked |
+|---|---|---|---|
+| `testBuild.banner` | TEST BUILD: for testing only, not for real shop records | TEST BUILD: sɔhwɛ nko ara, ɛnyɛ sotɔɔ nkrataa ankasa | Waiting for a Twi speaker |

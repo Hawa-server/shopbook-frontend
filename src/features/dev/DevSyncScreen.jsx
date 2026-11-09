@@ -1,8 +1,8 @@
-// DEVELOPMENT ONLY: a small screen to make sync records while the real screens don't exist yet
+// A small test screen to make sync records while the real screens don't exist yet
 // (app plan FE3 / FE3.5: "a small developer-only test screen that changes one settings field").
 //
-// It is NOT in the app phones download: App.jsx only imports it inside `if (import.meta.env.DEV)`, which
-// Vite replaces with `false` in production builds, so this file is left out of the build entirely.
+// It only exists in `npm run dev` and in a temporary test build (VITE_SYNC_TEST_SCREEN=1, for the real-phone
+// test). In any other build App.jsx's `__SYNC_TEST_SCREEN__` is `false`, so this file is left out entirely.
 // Being a developer tool, its words are plain English rather than dictionary keys.
 // To be removed in FE12, as the plan says.
 
@@ -45,7 +45,7 @@ export default function DevSyncScreen() {
   if (!businessId) return null;
   return (
     <Screen title="Dev: sync test" subtitle={openBusiness?.name} back>
-      <Banner tone="info">Development only. Not in the production build.</Banner>
+      <Banner tone="info">Test screen. Only in npm run dev and the temporary test build.</Banner>
       <section className="flex flex-col gap-1 rounded-summary bg-paper p-4 text-secondary">
         <p>Server copy: version {data?.server?.version ?? '—'}, note “{data?.server?.receiptNote ?? ''}”, phone “{data?.server?.receiptPhone ?? ''}”</p>
         <p>Shown (with unsent changes): note “{data?.shown?.receiptNote ?? ''}”, phone “{data?.shown?.receiptPhone ?? ''}”</p>

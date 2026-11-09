@@ -263,4 +263,7 @@ export default {
   'errors.code.DEVICE_KEY_INVALID': 'The phone could not make its key. Try again.',
   'errors.code.DEVICE_ID_TAKEN': 'Try registering again.',
   'errors.code.NO_BUSINESS': "You're not part of any business any more.",
+
+  // The temporary test build's banner
+  'testBuild.banner': 'TEST BUILD: for testing only, not for real shop records',
 };

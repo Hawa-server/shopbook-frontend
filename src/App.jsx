@@ -37,9 +37,11 @@ import PinLockScreen from './features/onboarding/PinLockScreen.jsx';
 import RegisterPhoneScreen from './features/onboarding/RegisterPhoneScreen.jsx';
 import SyncStatusScreen from './features/needsAttention/SyncStatusScreen.jsx';
 
-// DEVELOPMENT ONLY (FE3/FE3.5 sync test screen). In a production build `import.meta.env.DEV` is the
-// constant `false`, so Vite drops this import and the screen's code from the build entirely.
-const DevSyncScreen = import.meta.env.DEV ? lazy(() => import('./features/dev/DevSyncScreen.jsx')) : null;
+// The FE3/FE3.5 sync test screen: only in `npm run dev` and in a temporary test build
+// (VITE_SYNC_TEST_SCREEN=1). In any other build `__SYNC_TEST_SCREEN__` is the constant `false`
+// (vite.config.js), so this import and the screen's code are left out of the build entirely.
+// `npm run check:no-test-screen` confirms it.
+const DevSyncScreen = __SYNC_TEST_SCREEN__ ? lazy(() => import('./features/dev/DevSyncScreen.jsx')) : null;
 
 // The frame around every tab screen: content centred at max 480px on wider screens, tabs at the bottom.
 function Shell() {
