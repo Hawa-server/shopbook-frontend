@@ -60,9 +60,45 @@ export const BUSINESS_SCHEMA_V1 = {
   meta: 'key',
 };
 
+// Version 2 (FE3): adds `locations` for the `location` rows the server sends from BE5 (api.md
+// "Pull rows"). Only a new table, so no .upgrade() is needed and every existing row stays as it is.
+// (Dexie: a later version lists only the tables it adds or changes.)
+export const BUSINESS_SCHEMA_V2 = {
+  locations: 'id',
+};
+
 // Creates (does not open) the Dexie database for one business with every version declared.
 export function createBusinessDb(businessId) {
   const db = new Dexie(businessDbName(businessId));
   db.version(1).stores(BUSINESS_SCHEMA_V1);
+  db.version(2).stores(BUSINESS_SCHEMA_V2);
   return db;
+}
+
+// The open databases, one per business, so the whole app shares one connection to each.
+const openDbs = new Map();
+
+// Returns the database for a business, opening it the first time it's asked for.
+export function getBusinessDb(businessId) {
+  if (!openDbs.has(businessId)) openDbs.set(businessId, createBusinessDb(businessId));
+  return openDbs.get(businessId);
+}
+
+// Closes a business's database (when switching business or before deleting it).
+export function closeBusinessDb(businessId) {
+  const db = openDbs.get(businessId);
+  if (db) {
+    db.close();
+    openDbs.delete(businessId);
+  }
+}
+
+// Reads one value from a business's `meta` table (device, cursor, last sync…), or undefined.
+export async function getMeta(db, key) {
+  return (await db.meta.get(key))?.value;
+}
+
+// Saves one value in a business's `meta` table.
+export function setMeta(db, key, value) {
+  return db.meta.put({ key, value });
 }

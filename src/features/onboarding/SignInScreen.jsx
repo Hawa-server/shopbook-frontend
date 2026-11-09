@@ -52,11 +52,12 @@ export default function SignInScreen() {
       setBusy(false);
       return;
     }
-    const done = await completeSignIn(result.data, { resetPin: reason === 'forgotPin' || reason === 'lockedOut' });
+    // The password just typed also registers this phone (then it's forgotten; see AuthProvider).
+    const done = await completeSignIn(result.data, { resetPin: reason === 'forgotPin' || reason === 'lockedOut', password });
     setPassword('');
     setBusy(false);
     if (!done.ok) {
-      setErrors({ fields: {}, form: t('takeOver.blocked', { name: done.blockedName, n: done.count }) });
+      setErrors({ fields: {}, form: t('takeOver.blocked', { name: done.blockedName, count: done.count }) });
       return;
     }
     navigate('/sell', { replace: true });

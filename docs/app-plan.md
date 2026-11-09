@@ -401,7 +401,7 @@ With **two real phones** (or one phone and a laptop browser) signed in to the sa
 - both in airplane mode, records made on both, then reconnected → everything appears on both, once
 - the network cut in the middle of a sync (airplane mode on during "Sending…") → nothing lost or doubled after reconnecting
 - the app closed during a save → either the whole record is there or none of it
-- the same settings field edited on both phones offline → the last one sent wins everywhere, and `ChangeLog` marks the earlier one `conflict: true`
+- the same settings field edited on both phones offline → the last one sent wins everywhere, and `ChangeLog` marks the later change, the one that arrived with an out-of-date `baseVersion`, `conflict: true`; it still wins
 - one person removed by the owner, and one phone revoked → those phones are wiped on their next sync
 - the session expired while offline → selling continues; after signing in, everything is sent
 - an app update installed while records are unsent → nothing lost

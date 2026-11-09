@@ -518,7 +518,6 @@ These lines were added in FE2. Like FE1's, they are drafts by Claude Code for a 
 | `signIn.reason.sessionEnded` | Your sign-in has ended. Sign in again to send your records. Everything on this phone is kept. | Wo hyɛn-mu no aba awieeɛ. Hyɛn mu bio na wo nkrataa nkɔ. Biribiara a ɛwɔ fon yi so wɔ hɔ. |
 | `signIn.reason.forgotPin` | Sign in with your password, then choose a new PIN. | Fa wo ahintasɛm hyɛn mu, na afei paw PIN foforɔ. |
 | `signIn.reason.lockedOut` | Sign in with your password, then choose a new PIN. | Fa wo ahintasɛm hyɛn mu, na afei paw PIN foforɔ. |
-| `takeOver.blocked` | {name} has {n} records not sent. Connect to the internet to send them first. | {name} wɔ nkrataa {n} a wɔmmɛmanee. Fa intanɛt bɔ ho na fa kɔ kane. |
 | `signUp.title` | Create account | Bue akawnt |
 | `signUp.you` | You | Wo |
 | `signUp.name` | Your name | Wo din |
@@ -577,7 +576,6 @@ These lines were added in FE2. Like FE1's, they are drafts by Claude Code for a 
 | `pin.why` | The PIN opens the app on this phone, even without internet. | PIN no bue app no wɔ fon yi so, mpo a intanɛt nni hɔ. |
 | `pin.lockTitle` | Enter your PIN | Kyerɛw wo PIN |
 | `pin.enter` | Enter your 4-digit PIN | Kyerɛw wo PIN a ɛyɛ nɔma 4 |
-| `pin.wrong` | Wrong PIN. {n} tries left. | PIN no nyɛ. Aka {n}. |
 | `pin.lockedOut` | Too many wrong PINs. Sign in with your password to open the app (this needs internet). Nothing on this phone is lost. | PIN a ɛnyɛ no adɔɔso. Fa wo ahintasɛm hyɛn mu na bue app no (ɛhia intanɛt). Biribiara nyera wɔ fon yi so. |
 | `pin.forgot` | Forgot PIN? Sign in with your password | Wo werɛ afi PIN? Fa ahintasɛm hyɛn mu |
 | `pin.signInWithPassword` | Sign in with your password | Fa wo ahintasɛm hyɛn mu |
@@ -604,8 +602,6 @@ These lines were added in FE2. Like FE1's, they are drafts by Claude Code for a 
 | `account.signOut` | Sign out | Fi mu |
 | `account.signOutTitle` | Sign out? | Wopɛ sɛ wofi mu? |
 | `account.signOutText` | Your records stay on this phone. You will need your password to sign in again. | Wo nkrataa bɛtena fon yi so. Wobɛhia wo ahintasɛm na woahyɛn mu bio. |
-| `account.signOutUnsent` | {n} records are not sent yet. They stay on this phone, but they will only be sent after you sign in again. | Nkrataa {n} nnya nkɔeɛ. Wɔbɛtena fon yi so, nanso wɔbɛsoma wɔn bere a woahyɛn mu bio nko ara. |
-| `account.signOutSure` | Are you sure? {n} records are still not sent. | Wo ho akokwaw? Nkrataa {n} nnya nkɔeɛ. |
 | `account.signOutAnyway` | Sign out anyway | Fi mu sa ara |
 | `errors.offline` | No internet. Connect and try again. | Intanɛt nni hɔ. Fa bɔ ho na san bɔ mmɔden. |
 | `errors.temporary` | The server isn't answering yet. Try again in a minute. | Server no nnya nnyee so. San bɔ mmɔden simma baako mu. |
@@ -637,3 +633,184 @@ These lines were added in FE2. Like FE1's, they are drafts by Claude Code for a 
 | `errors.field.country` | Choose a country. | Paw ɔman. |
 | `errors.field.acceptTerms` | Tick the box to accept the privacy notice and terms. | Hyɛ ahwɛ no so na gye kokoam nkra ne nhyehyɛeɛ no tom. |
 
+
+---
+
+## FE3: the sync engine
+
+### The phone's own key
+
+When someone signs in (or signs up), the app makes a **key pair** for the business in the browser (`src/crypto/deviceKey.js`). The private key is *not extractable*: not even the app's own code can read it out, it can only ask the browser to sign with it. It's kept in that business's local database. The app then registers it with the server: it asks for a one-time challenge, signs it, and sends the public key with the person's password. The server answers with the phone's **device code** (like `HKP`), which will start every receipt number.
+
+The password is used once and never stored. For a staff member's first sign-in the server only allows registration after they've chosen their own password and accepted the terms, so the new password waits **in memory only** until then, and is forgotten once registration has been tried, when those screens are left, or as soon as the app goes to the background. If registration couldn't happen (no internet), a banner offers **Register this phone** later.
+
+### Signing every business request
+
+`src/crypto/sign.js` builds the exact seven-line text from `api.md` (method, path and query, SHA-256 of the exact body, device, business, time, nonce) and signs it. The body is turned into text **once**, and that same text is hashed and sent, so the signature always matches what the server receives. A test checks the text against `api.md`'s own example.
+
+Phones often have the wrong time. Every answer carries `X-Server-Time`, and `src/api/clock.js` keeps the difference, so the app signs with the **server's** time. If the server still says the clock is off, or that a nonce was used before, the helper signs again once with a fresh nonce.
+
+### Saving, then sending
+
+`src/sync/outbox.js` saves a change and its **operation** in **one transaction**: both or neither. The operation gets its `opId` right then, and it never changes, even when sent ten times: that's how the server recognises a repeat and answers "duplicate" instead of doing it twice.
+
+`src/sync/engine.js` then **pushes** (sends up to 200 operations, oldest first) and **pulls** (fetches what changed since the phone's cursor):
+
+- **saved / duplicate**: the phone's copy is updated and the operation leaves the outbox, in one transaction.
+- **rejected**: it moves to **Needs attention**, marked **Not accepted**, and its record never counts in totals or lists as if it were saved (`countsAsSaved` in `src/sync/records.js`). It's never dropped silently.
+- **no answer, a timeout, a 5xx**: *nothing changes*. Everything stays in the outbox and is sent again later. A server error is never treated as a rejection, because guessing "rejected" could lose a record, and retrying never can.
+- **Pulling**: each page's rows **and** its cursor are saved in one transaction. If writing fails, the cursor doesn't move and the page comes again. If the server sends a kind of row this app doesn't know yet, pulling stops **without moving the cursor** ("Update the app to keep syncing") while sending carries on; after the update those rows arrive.
+
+### When it syncs
+
+`src/sync/scheduler.js`: on opening, every 3 minutes, right after a save, and when the network comes back. **Only one sync at a time**, even across several open tabs, using the browser's Web Locks. After a failure it waits 30 s, 1 min, 2 min, 5 min… plus up to **20% random extra**, and after reconnecting it waits 0–5 s at random, so a whole market's phones don't all wake the sleepy free server at the same instant.
+
+### When the server says no
+
+- **Session ended (401)**: everything is kept; "Sign in again" appears; after signing in, the waiting records are sent.
+- **Access removed / phone removed**: only **that business's** data is deleted from the phone (`src/db/wipe.js`), after counting what was still unsent, and a notice says so honestly ("3 records that weren't sent were removed. Tell the shop owner."). Other businesses on the phone are untouched.
+- **A different person signs in** (FE2's rule): once the previous person has nothing unsent, their business data is deleted before the newcomer's arrives.
+
+### Checked against the real server (8 Nov 2026)
+
+On the local backend: signing up registered the phone (code `HKP`); a change made online was sent; a change made in **airplane mode** showed "1 not sent" and was sent **once** when the network returned; a change the server refused appeared in **Needs attention** as "Not accepted"; after the session was ended, the waiting change was kept and sent after signing in again. The engine's tests (`src/sync/engine.test.js`, on a fake IndexedDB) also cover a lost answer resent as "duplicate", a failure halfway through a pull, and wiping one business but not another.
+
+### The development-only test screen
+
+`src/features/dev/DevSyncScreen.jsx` (More → "Dev: sync test", only when running `npm run dev`) changes the receipt note, or makes a change the server refuses, to watch sync work before the real screens exist. Production builds leave it out entirely (`import.meta.env.DEV`). It's used again for the two-phone test (FE3.5) and removed in FE12.
+
+### Twi to check (FE3)
+
+| Key | English | Draft Twi |
+|---|---|---|
+| `common.ok` | OK | Yoo |
+| `device.defaultName` | Android phone | Android fon |
+| `register.title` | Register this phone | Kyerɛw fon yi din |
+| `register.lead` | To send your records, this phone needs its own key for the business. Type your password once to register it. Your records stay on this phone meanwhile. | Na woatumi de wo nkrataa akɔ no, ɛsɛ sɛ fon yi nya ne safoa a ɛyɛ adwuma no deɛ. Kyerɛw wo ahintasɛm prɛko pɛ na fa kyerɛw ne din. Wo nkrataa bɛtena fon yi so kɔsi saa bere no. |
+| `register.button` | Register this phone | Kyerɛw fon yi din |
+| `register.banner` | Register this phone to send your records. | Kyerɛw fon yi din na wo nkrataa nkɔ. |
+| `register.done` | This phone is registered. Your records will be sent now. | Wɔakyerɛw fon yi din. Wo nkrataa bɛkɔ seesei. |
+| `syncStatus.title` | Sync status | Nkrataa a ɛkɔ |
+| `syncStatus.allSent` | All records sent | Wɔde nkrataa nyinaa akɔ |
+| `syncStatus.notSent` | {n} not sent yet | {n} nnya nkɔeɛ |
+| `syncStatus.lastSync` | Last sync: {time} | Ɛkɔɔ bere a ɛtwa toɔ: {time} |
+| `syncStatus.neverSynced` | Not synced yet on this phone. | Ɛnnya nkɔeɛ fi fon yi so. |
+| `syncStatus.thisPhone` | This phone: {code} | Fon yi: {code} |
+| `syncStatus.syncNow` | Sync now | Fa kɔ seesei |
+| `syncStatus.notPersistent` | This phone may clear the app's storage when it's short of space. Send your records often. | Fon yi bɛtumi apepa app no nneɛma bere a baabi asua. Fa wo nkrataa kɔ mpɛn pii. |
+| `syncStatus.oldUnsent` | Some records have not been sent for {days} days. Connect to the internet to send them. | Nkrataa bi nnya nkɔeɛ nnafua {days}. Fa intanɛt bɔ ho na fa kɔ. |
+| `syncStatus.updateApp` | Update the app to keep syncing. Your records are still being sent. | Fa app no foforɔ na ɛnkɔ so mfa nkrataa nkɔ. Wo nkrataa da so rekɔ. |
+| `syncStatus.closing` | This business is closing. Records are no longer synced. | Adwuma yi retoto. Wɔmfa nkrataa nkɔ bio. |
+| `attention.title` | Needs attention | Ɛhia sɛ wohwɛ |
+| `attention.none` | Nothing needs attention. | Biribiara nhia sɛ wohwɛ. |
+| `attention.notAccepted` | Not accepted | Wɔannye antom |
+| `attention.reasonCode` | The server did not accept it ({code}). | Server no annye antom ({code}). |
+| `attention.appProblem` | App problem: tell the developer. | App no wɔ ɔhaw: ka kyerɛ deɛ ɔyɛɛ app no. |
+| `attention.tellOwner` | Tell the shop owner. | Ka kyerɛ sotɔɔ wura no. |
+| `attention.doAgain` | Record it again correctly. | Kyerɛw bio yie. |
+| `attention.markSeen` | Mark as seen | Mahu |
+| `op.settings.update` | Business settings change | Adwuma nhyehyɛeɛ nsesaeɛ |
+| `op.unknown` | A record | Krataa bi |
+| `wipe.accessRemoved` | You no longer have access to {business}, so its records were removed from this phone. | Wontumi nhyɛ {business} mu bio, enti wɔayi ne nkrataa afi fon yi so. |
+| `wipe.deviceRevoked` | This phone was removed from {business}, so its records were removed from this phone. | Wɔayi fon yi afi {business} mu, enti wɔayi ne nkrataa afi fon yi so. |
+| `errors.code.VALIDATION_FAILED` | Something in it was not allowed. | Biribi wɔ mu a wɔmma ho kwan. |
+| `errors.code.INVALID_PAYLOAD` | The app sent it wrongly. | App no de ankɔ yie. |
+| `errors.code.UNKNOWN_OPERATION` | The server does not know this kind of record yet. | Server no nnim krataa saa bi. |
+| `errors.code.OP_ID_CONFLICT` | The app sent two different records with the same number. | App no de nkrataa abien a ɛnsɛ de nɔma koro kɔeɛ. |
+| `errors.code.CHALLENGE_INVALID` | The registration took too long. Try again. | Din kyerɛw no dii bere pii. San bɔ mmɔden. |
+| `errors.code.DEVICE_KEY_INVALID` | The phone could not make its key. Try again. | Fon no antumi anyɛ ne safoa. San bɔ mmɔden. |
+| `errors.code.DEVICE_ID_TAKEN` | Try registering again. | San bɔ mmɔden kyerɛw ne din. |
+| `errors.code.NO_BUSINESS` | You're not part of any business any more. | Wonka adwuma biara ho bio. |
+| `splash.loading` | Opening… (read aloud on the opening splash) | Ɛrebue… |
+
+---
+
+## FE3.5: the two-phone torture test
+
+The sync engine has to survive real life before any feature screen is built on it: two phones offline at once, signal lost halfway through sending, the app closed during a save, the same setting changed on two phones, a person removed, a phone revoked, a session that ends, an update with records still waiting. **No feature screens (FE5 onwards) until every case below passes on real phones.**
+
+### Before you start
+
+- [ ] The app is **deployed on Vercel**, and its address opens on both phones.
+- [ ] On Render, **`CLIENT_URL` and `APP_URL`** are set to the real Vercel address.
+- [ ] The backend's **proxy re-check** is done (server plan, BE1 Part B, "Proxy hops, measured twice") and `TRUST_PROXY` updated.
+- [ ] The backend's **fix for the pull** (`500 INTERNAL_ERROR` on every page with rows, found on 8 Nov 2026) is deployed on Render.
+- [ ] Two Android phones (or one phone and a laptop browser), each with the app installed from the Vercel address, and you know the owner's phone number and password.
+- [ ] **No real trader is using the app.** The test build is only allowed while that's true.
+- [ ] The **temporary test build** is live at the Vercel address (`VITE_SYNC_TEST_SCREEN=1`): every screen shows a "TEST BUILD" banner, and More has "Dev: sync test".
+- [ ] A test shop with **no products** (the app can't store product rows until FE5; it would stop pulling and say "Update the app").
+
+### Rehearsal on the computer (8 Nov 2026)
+
+Three separate Chrome profiles played three phones (the owner on phone A and phone B, a sales associate on phone C), against the **local** backend only, through `npm run dev`. Changes were made with the development-only test screen (More → "Dev: sync test", which only exists in `npm run dev`).
+
+**First runs:** every pull with rows answered `500 INTERNAL_ERROR`. The backend project fixed it the same day.
+
+**Final results, with the fixed server (8–9 Nov 2026). Every case passed:**
+
+| Case | Result |
+|---|---|
+| Set-up: the owner on two phones, each with its own key | **Passed** (for example codes `UZ4` and `CRV`) |
+| 1. Both offline, a different change on each, then reconnect: everything on both, once | **Passed**: both phones show both changes; version 19 → 21 |
+| 2. The network cut while sending (the server saved it, the answer was lost) | **Passed**: the change stayed in the outbox, was sent again and applied once; version 23 → 24 |
+| 3. The app closed in the middle of a save | **Passed**: after reopening, the change was whole and waiting, then sent; version 25 |
+| 4. The same setting changed on both phones offline: the last one sent wins everywhere | **Passed**: both phones ended with phone B's value; version 21 → 23. `ChangeLog` (read by the backend project, 9 Nov): phone B's change (v22 → v23) is marked `conflict: true`, as the plan now says |
+| 5a. A person removed by the owner: wiped, and the notice counts the unsent records | **Passed**: "You no longer have access to FE3.5 Test Shop, so its records were removed from this phone. 1 record that wasn't sent was removed. Tell the shop owner." (wording corrected after the run); no business database left on the phone |
+| 5b. A phone revoked by the owner: wiped on its next sync | **Passed** |
+| 6. Session ended while offline: kept, sent after signing in again | **Passed**: "Sign in again" shown, the change kept, sent once, and the other phone received it; version 25 → 26 |
+| 7. An app update with a record not sent: nothing lost | **Passed**: the update prompt appeared, and after **Update now** the record was still waiting, then sent once; version 26 → 27. The API was blocked to keep the record unsent, and the "new version" was a copy of the build with its service worker file changed |
+| Staff first sign-in registers the phone with the kept password | **Passed** (code `XBF`) |
+| A staff phone's settings change is refused → "Needs attention" | **Passed**: "Not accepted", "Tell the shop owner." |
+
+**What this doesn't prove:** these were Chrome profiles on one computer with simulated network loss, so the real-phone checklist below is still required. FE5 stays blocked until it passes.
+
+**What the rehearsal changed in the app:**
+- While syncs keep failing, the header chip shows "Connecting…" until one succeeds, so a phone never looks up to date when it can't fetch other phones' changes.
+- When the owner removes someone, their app can learn it from "who am I" (`GET /api/auth/me`) **before** any sync gets `ACCESS_REMOVED`. It now wipes that business's data in that case too, with the same notice and unsent count (`src/auth/session.js`, tested in `session.test.js`). Before this fix, the removed person saw "You're not part of any business any more" but the shop's records stayed on their phone.
+
+### On real phones (waiting for me)
+
+Use the deployed app on two phones signed in as the **owner** (phone A and phone B), and a third person as a sales associate for 5a. "Airplane mode" means the phone's own airplane mode. Changes are made with the test screen (More → "Dev: sync test") in the temporary test build.
+
+| # | Steps | Pass when | Status |
+|---|---|---|---|
+| 1 | Both phones in airplane mode. Phone A changes the receipt note, phone B the shop phone. Turn airplane mode off on both, open the app, wait a minute (or Sync now). | Both phones show **both** changes; Sync status on both says "All records sent"; nothing appears twice. | Waiting for me |
+| 2 | On phone A, make a change, tap Sync now, and switch airplane mode **on** while the chip says "Sending…". Then switch it off. | The change is on the server once (phone B shows it once); phone A's outbox empties; nothing in "Needs attention". | Waiting for me |
+| 3 | On phone A, make a change and close the app straight away (swipe it away). Open it again. | The change is either fully there (and then sent) or not there at all; never half a record. | Waiting for me |
+| 4 | Both phones in airplane mode. Both change the **same** setting to different values. Reconnect phone A first, wait for it to sync, then phone B. | Both phones end with **phone B's** value. The backend confirms `ChangeLog` marks **phone B's** change `conflict: true`: the later change, the one that arrived with an out-of-date `baseVersion`. It still wins. | Waiting for me |
+| 5a | The owner adds a sales associate; the associate signs in on a third phone (own password, terms, PIN). The associate goes into airplane mode and makes a change. The owner removes the associate. The associate turns airplane mode off. | The associate's phone says it no longer has access and **how many unsent records were removed**; the business's data is gone from that phone. | Waiting for me |
+| 5b | The owner revokes phone B (once the phones screen exists in FE4; until then, ask Claude Code). Phone B opens the app with internet. | Phone B says "This phone was removed from…" and the business's data is gone from it. | Waiting for me |
+| 6 | Make phone A's session end while it's in airplane mode (for example change the password on phone B, which signs out other phones), then on phone A make a change offline. Turn airplane mode off. | Phone A keeps working and shows "Sign in again"; after signing in, the change is sent once. | Waiting for me |
+| 7 | With phone A in airplane mode and a change not sent, publish a new version of the app; when phone A shows "A new version is ready", tap **Update now**. Then turn airplane mode off. | After the update the change is still "not sent", then it's sent once; nothing is lost. | Waiting for me |
+| 8 | On the associate's phone, try to change a business setting (development build). | It's refused and appears in "Needs attention" as "Not accepted", with "Tell the shop owner." | Waiting for me |
+
+### After the phone test
+
+- [ ] **Undo the test build the same day**, even if some cases still need repeating: remove `VITE_SYNC_TEST_SCREEN` in Vercel and redeploy.
+- [ ] Check the live address: `npm run check:no-test-screen -- https://<the Vercel address>` must say `OK`.
+- [ ] On each phone, tap **Update now** and check the "TEST BUILD" banner has gone.
+
+When you've done them, paste what you saw and Claude Code will record the results here.
+
+### Twi plural forms to check
+
+Texts with a number now have one form for 1 and one for every other number. `t('pin.wrong', { count: 3 })` picks the form using the language's rule in `src/i18n/languages.js`, and `npm run check:i18n` fails if a plural is missing a form, or if the code counts a text with no plural forms. **These Twi forms are drafts by Claude Code for a Twi speaker to check, along with the rule itself: is "one" only for exactly 1, and is one form each for 1 and for more the right split in Twi?**
+
+| Key | English | Draft Twi | Checked |
+|---|---|---|---|
+| `takeOver.blocked.one` | {name} has {count} record not sent. Connect to the internet to send it first. | {name} wɔ krataa {count} a wɔmmɛmanee. Fa intanɛt bɔ ho na fa kɔ kane. | Waiting for a Twi speaker |
+| `takeOver.blocked.other` | {name} has {count} records not sent. Connect to the internet to send them first. | {name} wɔ nkrataa {count} a wɔmmɛmanee. Fa intanɛt bɔ ho na fa kɔ kane. | Waiting for a Twi speaker |
+| `pin.wrong.one` | Wrong PIN. {count} try left. | PIN no nyɛ. Mmɔdenbɔ {count} na aka. | Waiting for a Twi speaker |
+| `pin.wrong.other` | Wrong PIN. {count} tries left. | PIN no nyɛ. Mmɔdenbɔ {count} na aka. | Waiting for a Twi speaker |
+| `account.signOutUnsent.one` | {count} record is not sent yet. It stays on this phone, but it will only be sent after you sign in again. | Krataa {count} nnya nkɔeɛ. Ɛbɛtena fon yi so, nanso wɔbɛsoma bere a woahyɛn mu bio nko ara. | Waiting for a Twi speaker |
+| `account.signOutUnsent.other` | {count} records are not sent yet. They stay on this phone, but they will only be sent after you sign in again. | Nkrataa {count} nnya nkɔeɛ. Wɔbɛtena fon yi so, nanso wɔbɛsoma wɔn bere a woahyɛn mu bio nko ara. | Waiting for a Twi speaker |
+| `account.signOutSure.one` | Are you sure? {count} record is still not sent. | Wo ho akokwaw? Krataa {count} nnya nkɔeɛ. | Waiting for a Twi speaker |
+| `account.signOutSure.other` | Are you sure? {count} records are still not sent. | Wo ho akokwaw? Nkrataa {count} nnya nkɔeɛ. | Waiting for a Twi speaker |
+| `wipe.unsentLost.one` | {count} record that wasn't sent was removed. Tell the shop owner. | Wɔayi krataa {count} a wɔmmɛmanee. Ka kyerɛ sotɔɔ wura no. | Waiting for a Twi speaker |
+| `wipe.unsentLost.other` | {count} records that weren't sent were removed. Tell the shop owner. | Wɔayi nkrataa {count} a wɔmmɛmanee. Ka kyerɛ sotɔɔ wura no. | Waiting for a Twi speaker |
+
+### Twi to check (test build)
+
+| Key | English | Draft Twi | Checked |
+|---|---|---|---|
+| `testBuild.banner` | TEST BUILD: for testing only, not for real shop records | TEST BUILD: sɔhwɛ nko ara, ɛnyɛ sotɔɔ nkrataa ankasa | Waiting for a Twi speaker |

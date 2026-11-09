@@ -5,17 +5,16 @@
 // - Signed in: first whatever step is due (own password, terms, invitations, no business, set PIN,
 //   PIN lock), then the app with its bottom tabs. While the PIN is asked, /sign-in stays reachable for
 //   "Forgot PIN" and after 5 wrong PINs.
-// - If the server session ended, a banner on every tab offers "Sign in again"; nothing is deleted.
+// - Notices (session ended, register this phone, data removed, update the app) show under each tab
+//   screen's header (components/AppNotices.jsx); nothing is deleted by them.
 
-import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router';
-import { useT } from './i18n/t.js';
+import { Suspense, lazy } from 'react';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router';
 import { useAuth } from './auth/AuthProvider.jsx';
 import { STEP } from './auth/nextStep.js';
 import BottomTabs from './components/BottomTabs.jsx';
 import UpdatePrompt from './components/UpdatePrompt.jsx';
-import Banner from './components/Banner.jsx';
 import Splash, { useSplash } from './components/Splash.jsx';
-import Button from './components/Button.jsx';
 import SellScreen from './features/sell/SellScreen.jsx';
 import CustomersScreen from './features/customers/CustomersScreen.jsx';
 import StockScreen from './features/stock/StockScreen.jsx';
@@ -35,33 +34,19 @@ import InvitationsScreen from './features/onboarding/InvitationsScreen.jsx';
 import NoBusinessScreen from './features/onboarding/NoBusinessScreen.jsx';
 import SetPinScreen from './features/onboarding/SetPinScreen.jsx';
 import PinLockScreen from './features/onboarding/PinLockScreen.jsx';
+import RegisterPhoneScreen from './features/onboarding/RegisterPhoneScreen.jsx';
+import SyncStatusScreen from './features/needsAttention/SyncStatusScreen.jsx';
 
-// "Your sign-in has ended": shown above every tab until the person signs in again.
-function SessionEndedBanner() {
-  const { t } = useT();
-  const navigate = useNavigate();
-  return (
-    <div className="px-4 pt-3">
-      <Banner
-        tone="info"
-        action={
-          <Button variant="secondary" size="sm" onClick={() => navigate('/sign-in', { state: { reason: 'sessionEnded' } })}>
-            {t('session.signInAgain')}
-          </Button>
-        }
-      >
-        {t('session.ended')}
-      </Banner>
-    </div>
-  );
-}
+// The FE3/FE3.5 sync test screen: only in `npm run dev` and in a temporary test build
+// (VITE_SYNC_TEST_SCREEN=1). In any other build `__SYNC_TEST_SCREEN__` is the constant `false`
+// (vite.config.js), so this import and the screen's code are left out of the build entirely.
+// `npm run check:no-test-screen` confirms it.
+const DevSyncScreen = __SYNC_TEST_SCREEN__ ? lazy(() => import('./features/dev/DevSyncScreen.jsx')) : null;
 
 // The frame around every tab screen: content centred at max 480px on wider screens, tabs at the bottom.
 function Shell() {
-  const { sessionEnded } = useAuth();
   return (
     <div className="mx-auto min-h-dvh max-w-120 bg-ground">
-      {sessionEnded && <SessionEndedBanner />}
       <Outlet />
       <UpdatePrompt place="aboveTabs" />
       <BottomTabs />
@@ -123,6 +108,17 @@ export default function App() {
       <Route path="/more/account/password" element={<ChangeAccountScreen key="password" what="password" />} />
       <Route path="/more/account/phone" element={<ChangeAccountScreen key="phone" what="phone" />} />
       <Route path="/more/account/email" element={<ChangeAccountScreen key="email" what="email" />} />
+      <Route path="/register-phone" element={<RegisterPhoneScreen />} />
+      {DevSyncScreen && (
+        <Route
+          path="/dev/sync"
+          element={
+            <Suspense fallback={null}>
+              <DevSyncScreen />
+            </Suspense>
+          }
+        />
+      )}
       <Route element={<Shell />}>
         <Route path="/sell" element={<SellScreen />} />
         <Route path="/customers" element={<CustomersScreen />} />
@@ -130,6 +126,7 @@ export default function App() {
         <Route path="/today" element={<TodayScreen />} />
         <Route path="/more" element={<MoreScreen />} />
         <Route path="/more/account" element={<MyAccountScreen />} />
+        <Route path="/more/sync" element={<SyncStatusScreen />} />
         <Route path="*" element={<Navigate to="/sell" replace />} />
       </Route>
     </Routes>

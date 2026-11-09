@@ -2,7 +2,8 @@
 <!-- The single page that loads the app. No inline scripts (the Content-Security-Policy forbids them).
      The splash inside #root is plain HTML and CSS, so it shows the instant the page arrives, before any
      JavaScript runs; React then shows the same splash (components/Splash.jsx) until the app is ready.
-     Inline <style> is allowed by the CSP (style-src 'unsafe-inline'); inline scripts are not. -->
+     Inline <style> is allowed by the CSP (style-src 'unsafe-inline'); inline scripts are not.
+     TEST_BUILD_BAR below is empty except in a temporary test build (vite.config.js). -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -24,6 +25,7 @@
   </head>
   <body>
     <div id="root">
+      <!--TEST_BUILD_BAR-->
       <div class="boot-splash" aria-busy="true">
         <img src="/icons/logo-mark.svg" alt="" width="112" height="112" />
         <p>%APP_NAME%</p>

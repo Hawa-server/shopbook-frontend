@@ -127,7 +127,7 @@ export default function MyAccountScreen() {
       >
         {signOutStep?.unsent > 0 ? (
           <Banner tone="danger">
-            {signOutStep.sure ? t('account.signOutSure', { n: signOutStep.unsent }) : t('account.signOutUnsent', { n: signOutStep.unsent })}
+            {signOutStep.sure ? t('account.signOutSure', { count: signOutStep.unsent }) : t('account.signOutUnsent', { count: signOutStep.unsent })}
           </Banner>
         ) : (
           <p className="text-body">{t('account.signOutText')}</p>

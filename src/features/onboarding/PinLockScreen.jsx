@@ -52,7 +52,7 @@ export default function PinLockScreen() {
       ) : (
         <>
           <p className="text-center text-item font-semibold">{t('pin.enter')}</p>
-          {triesLeft !== null && <Banner tone="danger">{t('pin.wrong', { n: triesLeft })}</Banner>}
+          {triesLeft !== null && <Banner tone="danger">{t('pin.wrong', { count: triesLeft })}</Banner>}
           <PinPad onComplete={onComplete} busy={busy} />
         </>
       )}

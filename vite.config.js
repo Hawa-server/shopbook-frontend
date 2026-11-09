@@ -1,5 +1,5 @@
 // Build settings: React, Tailwind, the offline app (vite-plugin-pwa), the /api proxy for local work,
-// and Vitest. The app's name comes from the dictionary key 'app.name' (docs/design.md §1), so a new
+// the temporary test build's switch (VITE_SYNC_TEST_SCREEN), and Vitest. The app's name comes from the dictionary key 'app.name' (docs/design.md §1), so a new
 // brand name is one line in src/i18n/en.js plus new icons.
 
 import { defineConfig, loadEnv } from 'vite';
@@ -11,24 +11,29 @@ import pkg from './package.json' with { type: 'json' };
 
 const APP_NAME = en['app.name'];
 
-// Puts the app's name into index.html's <title> (written there as %APP_NAME%).
-function appNameInHtml() {
+// Fills index.html: the app's name (%APP_NAME%), and in a temporary test build, the "TEST BUILD" bar on the
+// splash that shows before any JavaScript runs (<!--TEST_BUILD_BAR-->; components/TestBuildBanner.jsx after that).
+function fillHtml(isTestBuild) {
+  const bar = '<div style="background:#F2B544;color:#1B1B18;font:700 1rem system-ui,sans-serif;text-align:center;padding:.5rem">TEST BUILD</div>';
   return {
-    name: 'app-name-in-html',
-    transformIndexHtml: (html) => html.replaceAll('%APP_NAME%', APP_NAME),
+    name: 'fill-html',
+    transformIndexHtml: (html) => html.replaceAll('%APP_NAME%', APP_NAME).replace('<!--TEST_BUILD_BAR-->', isTestBuild ? bar : ''),
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   // Only API_PROXY_TARGET is read here, and only for `npm run dev`; it is never put into the app.
   const env = loadEnv(mode, process.cwd(), '');
   const proxyTarget = env.API_PROXY_TARGET || 'http://localhost:3000';
+  // A temporary test build for the real-phone test (docs/guide.md, FE3.5). These become fixed true/false in
+  // the code at build time, so without the setting the test screen's code is left out of the build entirely.
+  const isTestBuild = env.VITE_SYNC_TEST_SCREEN === '1';
 
   return {
     plugins: [
       react(),
       tailwindcss(),
-      appNameInHtml(),
+      fillHtml(isTestBuild),
       VitePWA({
         // 'prompt': a new version waits for the person to tap "Update now" (never a surprise reload).
         registerType: 'prompt',
@@ -65,6 +70,8 @@ export default defineConfig(({ mode }) => {
     ],
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      __SYNC_TEST_SCREEN__: JSON.stringify(command === 'serve' || isTestBuild),
+      __TEST_BUILD_BANNER__: JSON.stringify(isTestBuild),
     },
     server: {
       // Locally, /api goes to the backend, so the app always calls its own address (same as production).

@@ -102,5 +102,6 @@ Check **390px width**, **airplane mode** and both languages; run the Vitest test
 - Start the app: `npm run dev` (opens on http://localhost:5173; `/api` goes to `API_PROXY_TARGET` in `.env`)
 - Run the tests: `npm test`
 - Check the dictionaries: `npm run check:i18n`
+- Confirm a build has no test screen: `npm run check:no-test-screen` (or `-- https://address` for a live one)
 - Build the app: `npm run build` (then `npm run preview` to try the built, offline-ready version)
 - Remake the PNG icons after a logo change: `npm run icons` (uses the installed Chrome)

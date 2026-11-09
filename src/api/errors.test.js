@@ -58,6 +58,16 @@ describe('whatToDo', () => {
     expect(whatToDo(err(502, 'EMAIL_NOT_SENT'))).toBe(ACTION.SHOW);
   });
 
+  it('asks to register the phone again when it has no valid key (BE5)', () => {
+    expect(whatToDo(err(403, 'DEVICE_NOT_REGISTERED'))).toBe(ACTION.REGISTER_DEVICE);
+    expect(whatToDo(err(401, 'DEVICE_SIGNATURE_INVALID'))).toBe(ACTION.REGISTER_DEVICE);
+  });
+
+  it('treats a clock or nonce problem left after the re-signed retry as temporary', () => {
+    expect(whatToDo(err(401, 'CLOCK_OUT_OF_RANGE'))).toBe(ACTION.TEMPORARY);
+    expect(whatToDo(err(401, 'NONCE_REUSED'))).toBe(ACTION.TEMPORARY);
+  });
+
   it('flags app bugs', () => {
     for (const code of ['CSRF_HEADER_MISSING', 'ORIGIN_NOT_ALLOWED', 'ORIGIN_REQUIRED', 'INVALID_JSON', 'BUSINESS_REQUIRED']) {
       expect(whatToDo(err(400, code))).toBe(ACTION.APP_BUG);
