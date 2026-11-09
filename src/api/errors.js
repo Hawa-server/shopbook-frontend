@@ -19,6 +19,7 @@ export const ACTION = {
   NOT_ALLOWED: 'notAllowed', //  "Your role can't do this"; don't retry
   SHOW: 'show', //               show this code's own message (WRONG_LOGIN, PHONE_TAKEN…); the screen decides
   APP_BUG: 'appBug', //          the app sent something wrong; don't retry; report via Help
+  REGISTER_DEVICE: 'registerDevice', // this phone has no valid key for the business: register again (password), keep the outbox
 };
 
 // Codes that mean the app itself made a mistake (docs/api.md says "App bug" or "shouldn't happen").
@@ -32,8 +33,7 @@ const APP_BUG_CODES = new Set([
   'PAYLOAD_TOO_LARGE',
 ]);
 
-// Codes that wipe one business's local data. DEVICE_REVOKED is in the app plan; api.md will list it
-// with the device endpoints (BE4/BE5). Until then the server never sends it, so this changes nothing.
+// Codes that wipe one business's local data (api.md: ACCESS_REMOVED from BE3, DEVICE_REVOKED from BE5).
 const WIPE_CODES = new Set(['ACCESS_REMOVED', 'DEVICE_REVOKED']);
 
 // Decides what to do with a result from apiRequest().
@@ -54,6 +54,10 @@ export function whatToDo(result) {
   if (code === 'NOT_SIGNED_IN') return ACTION.SIGN_IN;
   if (WIPE_CODES.has(code)) return ACTION.WIPE_BUSINESS;
   if (code === 'BUSINESS_CLOSING') return ACTION.BUSINESS_CLOSING;
+  // BE5: not registered (storage cleared, reinstalled) or the key no longer matches → register again.
+  if (code === 'DEVICE_NOT_REGISTERED' || code === 'DEVICE_SIGNATURE_INVALID') return ACTION.REGISTER_DEVICE;
+  // Still wrong after the helper's one re-signed retry: treat as temporary and try again later.
+  if (code === 'CLOCK_OUT_OF_RANGE' || code === 'NONCE_REUSED') return ACTION.TEMPORARY;
   if (code === 'TERMS_REQUIRED') return ACTION.ACCEPT_TERMS;
   if (code === 'PASSWORD_CHANGE_REQUIRED') return ACTION.CHANGE_PASSWORD;
   if (code === 'VALIDATION_FAILED' || code === 'WRONG_PASSWORD') return ACTION.FIX_INPUT;

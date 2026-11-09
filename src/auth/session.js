@@ -16,13 +16,29 @@ import Dexie from 'dexie';
 import { appDb, getAppValue, setAppValue } from '../db/appDb.js';
 import { businessDbName, createBusinessDb } from '../db/businessDb.js';
 import { chooseOpenBusiness } from './nextStep.js';
+import { wipeBusiness } from '../db/wipe.js';
 import { LANGUAGE_TAGS } from '../i18n/languages.js';
 
 export const MAX_WRONG_PINS = 5;
 
+// When the SAME person's new `me` no longer lists a business they had, the owner removed them (or the
+// business is gone): that business's data must not stay on the phone. This happens even when the app
+// learns it from `GET /api/auth/me` before any sync could get ACCESS_REMOVED. Each lost business is wiped
+// (after counting what was unsent) and a notice says so, exactly like the ACCESS_REMOVED case.
+async function removeLostBusinesses(previous, next) {
+  if (!previous?.user || previous.user.id !== next?.user?.id) return;
+  const still = new Set((next.businesses ?? []).map((b) => b.id));
+  for (const lost of (previous.businesses ?? []).filter((b) => !still.has(b.id))) {
+    const { unsent } = await wipeBusiness(lost.id);
+    await setAppValue('notice', { kind: 'accessRemoved', businessName: lost.name, unsent });
+  }
+}
+
 // Saves a fresh `me` answer: the person, which business is open, and who used the phone last.
 // Also adopts the person's server-side language, unless this phone has a newer choice waiting to be sent.
+// A business that has disappeared from the same person's list is wiped first (removeLostBusinesses).
 export async function saveMe(me) {
+  await removeLostBusinesses(await getAppValue('me'), me);
   await appDb.transaction('rw', appDb.kv, async () => {
     const openId = chooseOpenBusiness(me, await getAppValue('openBusinessId'));
     await setAppValue('me', me);

@@ -95,10 +95,10 @@ export default function SignUpScreen() {
       return;
     }
     await appDb.kv.delete('pendingLanguage'); // the language was just sent with the sign-up
-    const done = await completeSignIn(result.data);
+    const done = await completeSignIn(result.data, { password: form.password }); // also registers this phone
     setBusy(false);
     if (!done.ok) {
-      setErrors({ fields: {}, form: t('takeOver.blocked', { name: done.blockedName, n: done.count }) });
+      setErrors({ fields: {}, form: t('takeOver.blocked', { name: done.blockedName, count: done.count }) });
       return;
     }
     navigate('/sell', { replace: true });

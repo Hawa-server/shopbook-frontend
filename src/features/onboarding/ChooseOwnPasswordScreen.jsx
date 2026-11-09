@@ -13,7 +13,7 @@ import Banner from '../../components/Banner.jsx';
 
 export default function ChooseOwnPasswordScreen() {
   const { t } = useT();
-  const { saveMe, signOutHere } = useAuth();
+  const { saveMe, signOutHere, keepPasswordForRegistration } = useAuth();
   const [current, setCurrent] = useState('');
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
@@ -33,6 +33,7 @@ export default function ChooseOwnPasswordScreen() {
     const result = await changePassword({ currentPassword: current, newPassword: password });
     setBusy(false);
     if (result.kind === 'ok') {
+      keepPasswordForRegistration(password); // memory only, to register this phone after the terms
       await saveMe(result.data);
     } else {
       setErrors(describeFailure(result, t, ['currentPassword', 'newPassword']));

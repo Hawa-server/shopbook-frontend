@@ -22,6 +22,8 @@ export default function MoreScreen() {
   return (
     <Screen title={t('more.title')}>
       <AccountRow />
+      <MoreRow icon="sync" label={t('syncStatus.title')} to="/more/sync" />
+      {import.meta.env.DEV && <MoreRow icon="info" label="Dev: sync test" to="/dev/sync" />}
       <LanguageCard />
       <AboutCard />
     </Screen>
@@ -39,6 +41,22 @@ function LanguageCard() {
       </h2>
       <LanguageSwitch />
     </section>
+  );
+}
+
+// A plain row that opens another screen.
+function MoreRow({ icon, label, to }) {
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(to)}
+      className="flex min-h-tap w-full items-center gap-3 rounded-summary bg-paper p-4 text-left active:bg-primary-soft"
+    >
+      <Icon name={icon} className="text-primary" />
+      <span className="flex-1 text-item font-semibold">{label}</span>
+      <Icon name="chevron" className="text-muted" />
+    </button>
   );
 }
 
