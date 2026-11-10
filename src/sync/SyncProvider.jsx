@@ -4,15 +4,14 @@
 // - It only runs once the person is through sign-in and the PIN (step APP), and this phone has its key
 //   for the business. Without a key it says so (`needsRegistration`), so a screen can ask for the password.
 // - 401 → "Sign in again" (AuthProvider), every local record kept.
-// - ACCESS_REMOVED / DEVICE_REVOKED → that business's data was wiped (engine.js); we save a notice saying
-//   so, including how many unsent records went with it, and refresh who the person is.
+// - ACCESS_REMOVED / DEVICE_REVOKED → that business's data was wiped (engine.js), and the wipe itself saved
+//   the notice with how many unsent records went with it (db/wipe.js); we refresh who the person is.
 // - BUSINESS_CLOSING → syncing stops for that business. An unknown row type → "Update the app".
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuth } from '../auth/AuthProvider.jsx';
 import { STEP } from '../auth/nextStep.js';
-import { setAppValue } from '../db/appDb.js';
 import { getBusinessDb } from '../db/businessDb.js';
 import { startScheduler } from './scheduler.js';
 
@@ -36,16 +35,10 @@ export function SyncProvider({ children }) {
     async (result) => {
       setOutcome(result);
       if (result.kind === 'signIn') markSessionEnded(true);
-      if (result.kind === 'wiped') {
-        await setAppValue('notice', {
-          kind: result.code === 'DEVICE_REVOKED' ? 'deviceRevoked' : 'accessRemoved',
-          businessName: openBusiness?.name ?? '',
-          unsent: result.unsent,
-        });
-        refreshMe();
-      }
+      // The wipe already saved its notice (db/wipe.js); refresh who the person is and which businesses remain.
+      if (result.kind === 'wiped') refreshMe();
     },
-    [markSessionEnded, refreshMe, openBusiness?.name],
+    [markSessionEnded, refreshMe],
   );
 
   // Start syncing when everything is ready; stop when the business changes, the app locks, or the session

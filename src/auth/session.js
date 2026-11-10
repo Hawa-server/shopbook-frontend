@@ -29,8 +29,9 @@ async function removeLostBusinesses(previous, next) {
   if (!previous?.user || previous.user.id !== next?.user?.id) return;
   const still = new Set((next.businesses ?? []).map((b) => b.id));
   for (const lost of (previous.businesses ?? []).filter((b) => !still.has(b.id))) {
-    const { unsent } = await wipeBusiness(lost.id);
-    await setAppValue('notice', { kind: 'accessRemoved', businessName: lost.name, unsent });
+    // The wipe saves the notice itself (only if it found data to delete), so if the sync already wiped
+    // this business, the sync's notice with its true unsent count is kept.
+    await wipeBusiness(lost.id, { notice: 'accessRemoved' });
   }
 }
 
