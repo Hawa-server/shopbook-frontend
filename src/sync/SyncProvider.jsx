@@ -19,7 +19,7 @@ import { startScheduler } from './scheduler.js';
 const SyncContext = createContext(null);
 
 export function SyncProvider({ children }) {
-  const { step, openBusiness, markSessionEnded, refreshMe } = useAuth();
+  const { step, openBusiness, sessionEnded, markSessionEnded, refreshMe } = useAuth();
   const businessId = openBusiness?.id ?? null;
   const [running, setRunning] = useState(false);
   const [outcome, setOutcome] = useState(null);
@@ -48,8 +48,10 @@ export function SyncProvider({ children }) {
     [markSessionEnded, refreshMe, openBusiness?.name],
   );
 
-  // Start syncing when everything is ready; stop when the business changes or the app locks.
-  const active = step === STEP.APP && Boolean(businessId) && hasDevice === true;
+  // Start syncing when everything is ready; stop when the business changes, the app locks, or the session
+  // ends. Signing in again makes `active` true again, which starts a fresh scheduler that syncs at once:
+  // without this, records saved while signed out would wait for the next save or "Sync now".
+  const active = step === STEP.APP && Boolean(businessId) && hasDevice === true && !sessionEnded;
   useEffect(() => {
     if (!active) return undefined;
     setOutcome(null);

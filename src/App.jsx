@@ -94,12 +94,26 @@ export default function App() {
 
   // While the PIN is asked, "Forgot PIN" and the locked-out state lead to a password sign-in.
   const pinStep = step === STEP.PIN || step === STEP.PIN_LOCKED_OUT;
+  // The update prompt is on these screens too: a phone that opens on the PIN lock must still be offered
+  // "A new version is ready" (it never reloads by itself; see UpdatePrompt).
   if (pinStep && (pathname === '/sign-in' || pathname === '/forgot-password')) {
-    return pathname === '/sign-in' ? <SignInScreen /> : <ForgotPasswordScreen />;
+    return (
+      <>
+        {pathname === '/sign-in' ? <SignInScreen /> : <ForgotPasswordScreen />}
+        <UpdatePrompt />
+      </>
+    );
   }
 
   const StepScreen = STEP_SCREENS[step];
-  if (StepScreen) return <StepScreen />;
+  if (StepScreen) {
+    return (
+      <>
+        <StepScreen />
+        <UpdatePrompt />
+      </>
+    );
+  }
 
   return (
     <Routes>
