@@ -186,6 +186,8 @@ describe('a full sync', () => {
     expect(await syncBusiness(businessId, { request: server.request })).toMatchObject({ kind: 'wiped', code: 'ACCESS_REMOVED', unsent: 2 });
     expect(await Dexie.exists(businessDbName(businessId))).toBe(false);
     expect(await other.db.outbox.count()).toBe(1); // the other business is untouched
+    const { getAppValue } = await import('../db/appDb.js');
+    expect(await getAppValue('notice')).toMatchObject({ kind: 'accessRemoved', unsent: 2 }); // saved by the wipe itself
   });
 
   it('a phone without a key asks to be registered, and keeps its outbox', async () => {

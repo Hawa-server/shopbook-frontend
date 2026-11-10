@@ -28,7 +28,8 @@ async function outcomeOf(result, businessId) {
   if (action === ACTION.WAIT) return { kind: 'wait', retryAfterSeconds: result.retryAfterSeconds ?? 60 };
   if (action === ACTION.SIGN_IN) return { kind: 'signIn' };
   if (action === ACTION.WIPE_BUSINESS) {
-    const { unsent } = await wipeBusiness(businessId);
+    // The wipe saves the notice the person sees (with the unsent count) at the moment it deletes.
+    const { unsent } = await wipeBusiness(businessId, { notice: result.code === 'DEVICE_REVOKED' ? 'deviceRevoked' : 'accessRemoved' });
     return { kind: 'wiped', code: result.code, unsent };
   }
   if (action === ACTION.BUSINESS_CLOSING) return { kind: 'closing' };

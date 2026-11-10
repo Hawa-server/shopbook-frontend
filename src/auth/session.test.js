@@ -24,6 +24,19 @@ describe('saveMe', () => {
     expect(await getBusinessDb(kept).outbox.count()).toBe(1); // the other business is untouched
   });
 
+  it('keeps the sync\'s notice (with its true unsent count) when the business was already wiped', async () => {
+    const { wipeBusiness } = await import('../db/wipe.js');
+    const shop = crypto.randomUUID();
+    await saveMe(me('u9', [business(shop, 'Already Wiped')]));
+    await getBusinessDb(shop).outbox.add({ opId: crypto.randomUUID(), type: 'x', payload: {} });
+    // The sync got ACCESS_REMOVED first: its wipe deleted the shop and saved a notice counting 1 unsent record
+    // (even if the screen then stopped the sync before it could report back).
+    await wipeBusiness(shop, { notice: 'accessRemoved' });
+    // Then "who am I" shows the shop gone: the notice must still be there and still say 1, not 0.
+    await saveMe(me('u9', []));
+    expect(await getAppValue('notice')).toEqual({ kind: 'accessRemoved', businessName: 'Already Wiped', unsent: 1 });
+  });
+
   it('does not wipe anything when a DIFFERENT person signs in (that is the take-over rule\'s job)', async () => {
     const theirs = crypto.randomUUID();
     await saveMe(me('u2', [business(theirs, 'Theirs')]));
