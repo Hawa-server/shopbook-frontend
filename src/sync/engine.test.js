@@ -5,7 +5,9 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { describe, expect, it } from 'vitest';
 import { businessDbName, getBusinessDb, getMeta, setMeta } from '../db/businessDb.js';
-import { saveWithOperation } from './outbox.js';
+import { saveWithOperation, saveWithOperations } from './outbox.js';
+import { applyPushResult } from './push.js';
+import { levelKey } from './stockLevels.js';
 import { syncBusiness } from './engine.js';
 import { applyPage } from './pull.js';
 import { backoffMs } from './backoff.js';
@@ -213,10 +215,10 @@ describe('pull pages and the cursor', () => {
   it('an unknown row type stops the pull WITHOUT moving the cursor, but pushing still happens', async () => {
     const server = fakeServer();
     const { businessId, db } = await freshBusiness();
-    server.rows.push({ type: 'product', serverSeq: ++server.seq, data: { id: 'p1' } });
+    server.rows.push({ type: 'sale', serverSeq: ++server.seq, data: { id: 'x1' } }); // a type from a later task
     await changeSettings(db, { receiptNote: 'still sent' });
     const outcome = await syncBusiness(businessId, { request: server.request });
-    expect(outcome).toMatchObject({ kind: 'updateApp', type: 'product', sent: 1 });
+    expect(outcome).toMatchObject({ kind: 'updateApp', type: 'sale', sent: 1 });
     expect(await db.outbox.count()).toBe(0);
     expect((await getMeta(db, 'cursor')) ?? 0).toBe(0);
     expect(await db.settings.get('business')).toMatchObject({ receiptNote: 'still sent' }); // from the push result
@@ -238,5 +240,66 @@ describe('back-off', () => {
     expect([1, 2, 3, 4, 9].map((n) => backoffMs(n, 0))).toEqual([30_000, 60_000, 120_000, 300_000, 300_000]);
     expect(backoffMs(1, 0.999)).toBeLessThanOrEqual(36_000);
     expect(backoffMs(1, 0.5)).toBe(33_000);
+  });
+});
+
+describe('products, sizes and stock (FE5)', () => {
+  const movement = (id, productId, sizeId, quantityUnits, recordedAt, extra = {}) => ({ type: 'stockMovement', serverSeq: 0, data: { id, productId, sizeId, quantityUnits, recordedAt, receivedAt: recordedAt, locationId: 'l1', ...extra } });
+
+  it('stores product, size and stock rows, and works out the stock level in the same transaction', async () => {
+    const { db } = await freshBusiness();
+    await applyPage(db, {
+      rows: [
+        { type: 'product', serverSeq: 1, data: { id: 'p1', name: 'Black sandal', type: 'shoes', unit: 'pair', unitScale: 1, retailMinor: 12000, version: 1 } },
+        { type: 'size', serverSeq: 2, data: { id: 's1', productId: 'p1', label: '40', sortOrder: 0, isActive: true, version: 1 } },
+        movement('m1', 'p1', 's1', 10, '2026-11-10T08:00:00.000Z'),
+        movement('m2', 'p1', 's1', -3, '2026-11-10T09:00:00.000Z'),
+        { type: 'stockCount', serverSeq: 5, data: { id: 'c1', productId: 'p1', sizeId: 's1', countedUnits: 6, recordedAt: '2026-11-10T08:30:00.000Z', receivedAt: '2026-11-10T08:30:05.000Z' } },
+      ],
+      nextCursor: 5,
+    });
+    expect(await db.products.get('p1')).toMatchObject({ name: 'Black sandal' });
+    expect(await db.sizes.get('s1')).toMatchObject({ label: '40' });
+    // The count of 6 at 08:30 is the starting point; the sale of 3 at 09:00 comes after it: 3.
+    expect(await db.stockLevels.get(levelKey('p1', 's1'))).toMatchObject({ units: 3 });
+  });
+
+  it('saves a product, its sizes and their starting stock as one transaction, in that order', async () => {
+    const { db } = await freshBusiness();
+    await saveWithOperations(db, [
+      { type: 'product.upsert', payload: { productId: 'p1', baseVersion: null, fields: { name: 'Shirt' } } },
+      { type: 'size.upsert', payload: { sizeId: 's1', productId: 'p1', baseVersion: null, fields: { label: 'M', sortOrder: 0 } } },
+      { type: 'stock.create', payload: { movementId: 'm1', type: 'opening', productId: 'p1', sizeId: 's1', quantityUnits: 4 }, ref: { table: 'stockMovements', id: 'm1' } },
+    ], { tables: ['stockMovements'], write: () => db.stockMovements.add({ id: 'm1', productId: 'p1', sizeId: 's1', quantityUnits: 4, recordedAt: '2026-11-10T08:00:00.000Z', syncState: SYNC_STATE.PENDING }) });
+    expect((await db.outbox.orderBy('seq').toArray()).map((o) => o.type)).toEqual(['product.upsert', 'size.upsert', 'stock.create']);
+  });
+
+  it('a saved product updates the phone\'s copy at once, and keeps the server\'s warnings', async () => {
+    const { db } = await freshBusiness();
+    await saveWithOperation(db, { type: 'product.upsert', payload: { productId: 'p9', baseVersion: null, fields: { name: 'Lace', type: 'fabric', unit: 'yard', retailMinor: 3500 } } });
+    const [op] = await db.outbox.toArray();
+    await applyPushResult(db, op, { status: 'saved', result: { productId: 'p9', version: 1, warnings: [{ code: 'PRODUCT_NAME_DUPLICATE', productId: 'p2' }] } });
+    expect(await db.products.get('p9')).toMatchObject({ name: 'Lace', unitScale: 2, version: 1 });
+    expect(await db.syncWarnings.get('p9')).toMatchObject({ warnings: [{ code: 'PRODUCT_NAME_DUPLICATE', productId: 'p2' }] });
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('a refused starting stock no longer counts: the level is worked out again without it', async () => {
+    const { db } = await freshBusiness();
+    await applyPage(db, { rows: [movement('m1', 'p1', null, 5, '2026-11-10T08:00:00.000Z')], nextCursor: 1 });
+    await saveWithOperation(db, { type: 'stock.create', payload: { movementId: 'm2', type: 'opening', productId: 'p1', sizeId: null, quantityUnits: 7 }, ref: { table: 'stockMovements', id: 'm2' } }, {
+      tables: ['stockMovements', 'stockCounts', 'stockLevels'],
+      write: async () => {
+        await db.stockMovements.add({ id: 'm2', productId: 'p1', sizeId: null, quantityUnits: 7, recordedAt: '2026-11-10T09:00:00.000Z', syncState: SYNC_STATE.PENDING });
+        const { recomputeLevels } = await import('./stockLevels.js');
+        await recomputeLevels(db, [levelKey('p1', null)]);
+      },
+    });
+    expect((await db.stockLevels.get(levelKey('p1', null))).units).toBe(12); // 5 from the server + 7 not sent yet
+    const [op] = await db.outbox.toArray();
+    await applyPushResult(db, op, { status: 'rejected', error: { code: 'NOT_FOUND', message: 'x' } });
+    expect((await db.stockMovements.get('m2')).syncState).toBe(SYNC_STATE.NOT_ACCEPTED);
+    expect((await db.stockLevels.get(levelKey('p1', null))).units).toBe(5);
+    expect(await db.needsAttention.count()).toBe(1);
   });
 });

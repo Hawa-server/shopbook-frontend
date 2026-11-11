@@ -67,11 +67,19 @@ export const BUSINESS_SCHEMA_V2 = {
   locations: 'id',
 };
 
+// Version 3 (FE5): warnings the server sends with a saved product or size (api.md push `warnings`, e.g. a
+// product added on another phone with the same name), kept until the person has seen them. A new table
+// only: no .upgrade(), every existing row stays.
+export const BUSINESS_SCHEMA_V3 = {
+  syncWarnings: 'id',
+};
+
 // Creates (does not open) the Dexie database for one business with every version declared.
 export function createBusinessDb(businessId) {
   const db = new Dexie(businessDbName(businessId));
   db.version(1).stores(BUSINESS_SCHEMA_V1);
   db.version(2).stores(BUSINESS_SCHEMA_V2);
+  db.version(3).stores(BUSINESS_SCHEMA_V3);
   return db;
 }
 

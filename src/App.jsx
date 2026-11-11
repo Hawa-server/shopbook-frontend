@@ -17,7 +17,11 @@ import UpdatePrompt from './components/UpdatePrompt.jsx';
 import Splash, { useSplash } from './components/Splash.jsx';
 import SellScreen from './features/sell/SellScreen.jsx';
 import CustomersScreen from './features/customers/CustomersScreen.jsx';
-import StockScreen from './features/stock/StockScreen.jsx';
+import ProductListScreen from './features/products/ProductListScreen.jsx';
+import ProductScreen from './features/products/ProductScreen.jsx';
+import ProductFormScreen from './features/products/ProductFormScreen.jsx';
+import CostNeededScreen from './features/products/CostNeededScreen.jsx';
+import ProductHistoryScreen from './features/products/ProductHistoryScreen.jsx';
 import TodayScreen from './features/today/TodayScreen.jsx';
 import MoreScreen from './features/settings/MoreScreen.jsx';
 import MyAccountScreen from './features/settings/MyAccountScreen.jsx';
@@ -123,6 +127,8 @@ export default function App() {
       <Route path="/more/account/phone" element={<ChangeAccountScreen key="phone" what="phone" />} />
       <Route path="/more/account/email" element={<ChangeAccountScreen key="email" what="email" />} />
       <Route path="/register-phone" element={<RegisterPhoneScreen />} />
+      <Route path="/stock/new" element={<ProductFormScreen key="new" />} />
+      <Route path="/stock/:productId/edit" element={<ProductFormScreen key="edit" />} />
       {DevSyncScreen && (
         <Route
           path="/dev/sync"
@@ -136,7 +142,10 @@ export default function App() {
       <Route element={<Shell />}>
         <Route path="/sell" element={<SellScreen />} />
         <Route path="/customers" element={<CustomersScreen />} />
-        <Route path="/stock" element={<StockScreen />} />
+        <Route path="/stock" element={<ProductListScreen />} />
+        <Route path="/stock/cost-needed" element={<CostNeededScreen />} />
+        <Route path="/stock/:productId" element={<ProductScreen />} />
+        <Route path="/stock/:productId/history" element={<ProductHistoryScreen />} />
         <Route path="/today" element={<TodayScreen />} />
         <Route path="/more" element={<MoreScreen />} />
         <Route path="/more/account" element={<MyAccountScreen />} />
