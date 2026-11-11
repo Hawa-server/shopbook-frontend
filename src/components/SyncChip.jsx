@@ -27,7 +27,9 @@ export default function SyncChip() {
   else if (failing || state === 'connecting' || state === 'unreachable') chip = <StatusChip kind="connecting" label={t('sync.connecting')} />;
 
   return (
-    <span role="status" aria-live="polite">
+    // min-w-0 + max-w-full: inside the header's flex row this wrapper may shrink, so a long chip (Twi, 130% text)
+    // wraps onto two lines in its own space instead of sliding left over the title.
+    <span role="status" aria-live="polite" className="min-w-0 max-w-full">
       {chip}
     </span>
   );

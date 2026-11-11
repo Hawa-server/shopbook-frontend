@@ -10,21 +10,44 @@
 // outbox with its opId and is sent again later.
 
 import { SYNC_STATE } from './records.js';
+import { STOCK_TABLES, levelKey, recomputeLevels } from './stockLevels.js';
 
 export const PUSH_BATCH = 200;
 
+// Keeps the server's warnings for a saved product or size (shown on its page until seen), or clears old ones.
+async function keepWarnings(db, id, entity, warnings) {
+  if (warnings?.length) await db.syncWarnings.put({ id, entity, warnings, at: new Date().toISOString() });
+  else await db.syncWarnings.delete(id);
+}
+
 // For each operation type: how a "saved"/"duplicate" result updates the phone's own copy, so the screen
-// shows what the server now holds without waiting for the next pull.
+// shows what the server now holds without waiting for the next pull (and nothing vanishes if that pull fails).
 const APPLY_SAVED = {
   // settings.update → the server's settings now include these changes, at the returned version.
   'settings.update': async (db, op, result) => {
     const current = (await db.settings.get('business')) ?? { key: 'business' };
     await db.settings.put({ ...current, ...op.payload.changes, version: result?.version ?? current.version, key: 'business' });
   },
+  // product.upsert → the product now has these fields, at the returned version (the pull brings the full row).
+  'product.upsert': async (db, op, result) => {
+    const { productId, fields } = op.payload;
+    const current = (await db.products.get(productId)) ?? { id: productId, isHidden: false, lowStockWarnings: true, lowStockLevelUnits: null, unitLabel: null, wholesaleMinor: null };
+    const next = { ...current, ...fields, id: productId, version: result?.version ?? current.version };
+    if (fields.unit) next.unitScale = fields.unit === 'yard' ? 2 : 1;
+    await db.products.put(next);
+    await keepWarnings(db, productId, 'product', result?.warnings);
+  },
+  // size.upsert → the same for a size.
+  'size.upsert': async (db, op, result) => {
+    const { sizeId, productId, fields } = op.payload;
+    const current = (await db.sizes.get(sizeId)) ?? { id: sizeId, productId, isActive: true, retailMinor: null, wholesaleMinor: null };
+    await db.sizes.put({ ...current, ...fields, id: sizeId, productId, version: result?.version ?? current.version });
+    await keepWarnings(db, sizeId, 'size', result?.warnings);
+  },
 };
 
 // Tables a push result may touch (all included in each result's transaction).
-const RESULT_TABLES = ['outbox', 'needsAttention', 'settings'];
+const RESULT_TABLES = ['outbox', 'needsAttention', 'settings', 'products', 'sizes', 'syncWarnings', ...STOCK_TABLES];
 
 // Applies one per-operation result in ONE local transaction.
 export async function applyPushResult(db, op, result) {
@@ -50,6 +73,8 @@ export async function applyPushResult(db, op, result) {
         seenAt: null,
       });
       if (op.ref) await db.table(op.ref.table).update(op.ref.id, { syncState: SYNC_STATE.NOT_ACCEPTED });
+      // A refused stock record no longer counts: its size's stock is worked out again without it.
+      if (op.type === 'stock.create') await recomputeLevels(db, [levelKey(op.payload.productId, op.payload.sizeId)]);
     }
     await db.outbox.delete(op.seq);
   });

@@ -416,13 +416,15 @@ Owner's team screen: add staff (name, phone number, role, email optional; shows 
 
 ### FE5 — Products, sizes and prices (Epic 1)
 
-Product list with search and type filter, add/edit product (type, unit, size ranges and custom sizes, prices, per-size prices, starting stock), hide/unhide, the owner's "Cost price needed" list, change history (owner).
+Product list with search and type filter, add/edit product (type, unit, size ranges and custom sizes, prices, per-size prices, starting stock: an `opening` movement for each box with a number, an empty box sends nothing), hide/unhide, the owner's "Cost price needed" list, change history (owner and manager, as `api.md` allows; the server removes cost from the manager's copy).
 
-**Done when:** every Epic 1 acceptance criterion that applies to the phone passes, including search in under half a second with 2,000 products.
+**Moved here from FE6 (decided 11 Nov 2026):** the stock pull rows (`stockMovement`, `stockCount`), the stock rule (`api.md` "The stock rule", tested against its shared fixtures), and `stockLevels` kept up to date, so the product list shows each product's stock (AC24) and a size can only be removed at 0 (AC11). The stock screens stay in FE6.
+
+**Done when:** every Epic 1 acceptance criterion that applies to the phone passes, including search in under half a second with 2,000 products (on the laptop, and on a low-end Android phone); the app's stock rule gives the answers in `api.md`'s shared fixtures.
 
 ### FE6 — Stock (Epic 2)
 
-Stock list (search; All / Low / Out of stock / Below zero) and each product's sizes; add a delivery with a quantity box per size (the owner can update the cost price from the same screen); remove stock with a reason and confirmation; count a size (saves the counted number with the number shown and the cursor; the difference is worked out, reason if different; a "Check this count" notice when the server flags `countCheck`), reused by the day close; low-stock list and badge; per-product low-stock level; "Check the shelf" list; stock history (owner and manager); `stockLevels` kept up to date.
+Stock list (search; All / Low / Out of stock / Below zero) and each product's sizes; add a delivery with a quantity box per size (the owner can update the cost price from the same screen); remove stock with a reason and confirmation; count a size (saves the counted number with the number shown and the cursor; the difference is worked out, reason if different; a "Check this count" notice when the server flags `countCheck`), reused by the day close; low-stock list and badge; per-product low-stock level; "Check the shelf" list; stock history (owner and manager); all using FE5's `stockLevels` and stock rule.
 
 **Done when:** every Epic 2 acceptance criterion that applies to the phone passes; adding, removing and counting stock update quantities instantly offline; half yards display correctly; the stock list opens in under a second with 2,000 products.
 

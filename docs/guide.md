@@ -776,8 +776,8 @@ Use the deployed app on two phones signed in as the **owner** (phone A and phone
 |---|---|---|---|
 | 1 | Both phones in airplane mode. Phone A changes the receipt note, phone B the shop phone. Turn airplane mode off on both, open the app, wait a minute (or Sync now). | Both phones show **both** changes; Sync status on both says "All records sent"; nothing appears twice. | Passed (10 Nov 2026): both devices showed both changes, nothing doubled |
 | 2 | On phone A, make a change, tap Sync now, and switch airplane mode **on** while the chip says "Sending…". Then switch it off. | The change is on the server once (phone B shows it once); phone A's outbox empties; nothing in "Needs attention". | Passed: the signal was cut while sending; version 12 on both, applied once |
-| 3 | On phone A, make a change and close the app straight away (swipe it away). Open it again. | The change is either fully there (and then sent) or not there at all; never half a record. | Passed: after swiping the app away the change was whole, then sent. To confirm with `ChangeLog` version 9 |
-| 4 | Both phones in airplane mode. Both change the **same** setting to different values. Reconnect phone A first, wait for it to sync, then phone B. | Both phones end with **phone B's** value. The backend confirms `ChangeLog` marks **phone B's** change `conflict: true`: the later change, the one that arrived with an out-of-date `baseVersion`. It still wins. | Passed: both ended with the laptop's words, version 14. `ChangeLog` conflict mark (laptop FUM) still to be read |
+| 3 | On phone A, make a change and close the app straight away (swipe it away). Open it again. | The change is either fully there (and then sent) or not there at all; never half a record. | Passed: after swiping the app away the change was whole, then sent. `ChangeLog` not read (production) |
+| 4 | Both phones in airplane mode. Both change the **same** setting to different values. Reconnect phone A first, wait for it to sync, then phone B. | Both phones end with **phone B's** value. The backend confirms `ChangeLog` marks **phone B's** change `conflict: true`: the later change, the one that arrived with an out-of-date `baseVersion`. It still wins. | Passed: both ended with the laptop's words, version 14. `ChangeLog` not read (production); the conflict mark was confirmed in the rehearsal |
 | 5a | On the owner's test screen, **Add sales associate** (a name and a real-looking number); note the temporary password. The associate signs in on a third phone or a second Chrome profile (own password, terms, PIN). The associate goes offline and makes a change. The owner taps **Remove** next to the associate. The associate goes back online. | The associate's phone says it no longer has access and **how many unsent records were removed**; the business's data is gone from that phone. | Passed for the data (only `shopbook-app` left on the removed person's device). The red notice was missing: a timing bug, fixed in the code on 10 Nov, to be confirmed after the next deploy |
 | 5b | On phone A's test screen, tap **Remove phone** next to phone B's code. Phone B opens the app with internet. | Phone B says "This phone was removed from…" and the business's data is gone from it. | Passed: "This phone was removed from Ami's couture…" and the data was gone |
 | 6 | Make phone A's session end while it's in airplane mode (for example change the password on phone B, which signs out other phones), then on phone A make a change offline. Turn airplane mode off. | Phone A keeps working and shows "Sign in again"; after signing in, the change is sent once. | Passed after a fix: the change was kept and sent; it needed "Sync now" after signing in again. Fixed the same day (syncing restarts when you sign in), and confirmed on the phone in check 7 |
@@ -789,13 +789,13 @@ Use the deployed app on two phones signed in as the **owner** (phone A and phone
 - "A new version is ready" didn't appear on the PIN lock and other step screens. Now it does.
 - A removed person's notice (with the unsent count) could be lost when two parts of the app wiped the data at once. Now the wipe saves the notice itself (tested; to confirm on a device after the next deploy).
 
-Still to do: the backend reads `ChangeLog` versions 9 and 14 (check 3's extra version, and check 4's conflict mark on the laptop's change).
+**FE3.5 complete (10 Nov 2026).** The production `ChangeLog` (versions 9 and 14) was not read: this run used the real deployed app, and neither project runs anything against production. The owner chose to rely on the evidence already there: in the rehearsal the backend read the local `ChangeLog` and showed the conflict mark on the later change and every change applied once; on the devices every version went up by exactly one per change and both devices always agreed. The removed person's notice (bug fixed 10 Nov) is confirmed when the FE3.5 cases are repeated after FE5.
 
 ### After the phone test
 
-- [ ] **Undo the test build the same day**, even if some cases still need repeating: remove `VITE_SYNC_TEST_SCREEN` in Vercel and redeploy.
-- [ ] Check the live address: `npm run check:no-test-screen -- https://<the Vercel address>` must say `OK`.
-- [ ] On each phone, tap **Update now** and check the "TEST BUILD" banner has gone.
+- [x] **Undo the test build the same day**, even if some cases still need repeating: remove `VITE_SYNC_TEST_SCREEN` in Vercel and redeploy. (Done 10 Nov 2026.)
+- [x] Check the live address: `npm run check:no-test-screen -- https://<the Vercel address>` must say `OK`. (10 Nov: "OK: no test screen or TEST BUILD banner in https://shopbook-frontend-eight.vercel.app (6 files checked, 4 scripts)".)
+- [x] On each phone, tap **Update now** and check the "TEST BUILD" banner has gone. (10 Nov: gone on the phone and the laptop.)
 
 When you've done them, paste what you saw and Claude Code will record the results here.
 
@@ -821,3 +821,191 @@ Texts with a number now have one form for 1 and one for every other number. `t('
 | Key | English | Draft Twi | Checked |
 |---|---|---|---|
 | `testBuild.banner` | TEST BUILD: for testing only, not for real shop records | TEST BUILD: sɔhwɛ nko ara, ɛnyɛ sotɔɔ nkrataa ankasa | Waiting for a Twi speaker |
+
+---
+
+## FE5: products, sizes and prices
+
+### Where products live
+
+The **Stock** tab is now the product list (FE6 adds the stock screens on top of it): search as you type, buttons for each type, each product's stock and retail price. Owner and manager add, edit and hide products; a sales associate only views them. The owner also sees **"Cost price needed"** (products a manager added, who can't set costs) and every cost price; nobody else's phone ever receives one (the server leaves `costMinor` out of their rows).
+
+### Saving offline, and what "Not sent yet" means for products
+
+Adding or editing a product saves `product.upsert` (and one `size.upsert` per size) in the outbox, in **one transaction** with any starting stock. The screens show the server's copy with those unsent changes laid on top, exactly like settings, so a new product appears at once with **"Not sent yet"**. If the server refuses it, it leaves the outbox for **Needs attention** ("Not accepted") and is no longer shown: it never counts as saved. An edit sends only the fields that changed, with the version the phone had (`baseVersion`).
+
+When the server saves a product, the phone updates its own copy straight away from the answer, so nothing vanishes if the next pull is slow. Warnings the server sends with it (for example "You already have a product with this name", when another phone added the same product offline) are kept and shown on the product's page until seen.
+
+### Stock without storing a number
+
+Stock is **never stored as a number**, on the server or the phone. It's always worked out from the stock movements and counts with one rule (`src/lib/stockRule.js`, from `api.md`): the latest count plus the movements after it, ordered by when they were **recorded** (then by id), never by when they arrived. The app tests its copy against the **same shared examples** the server uses, read straight from `docs/api.md`, so the two can't drift.
+
+So lists open fast, each size's stock is kept ready in `stockLevels` and worked out again **in the same transaction** as whatever changed it: a save, a pulled page, or a refused record (which stops counting). Starting stock is an `opening` movement for each box with a number; an empty box sends nothing.
+
+### Prices, sizes and checks
+
+Prices are typed as text and read by their digits with the business's currency rules (never floating point). Sizes come from ready-made ranges (`GET /api/reference`) or are typed with commas, and always show in their natural order. Each size can have its own price; empty means "the product's price". The form checks everything `api.md` checks (name 1–80 characters, prices in range, whole or half yards, at most 60 sizes) and **warns** without blocking: wholesale above retail, below cost (owner only), a name you already use.
+
+### Checks still to do on real devices (FE5)
+
+| Check | Status |
+|---|---|
+| Search with 2,000 products in under half a second on a **low-end Android phone** (AC23). On the laptop: under 50 ms per search in the tests | Waiting for me |
+| The FE3.5 cases again after FE5: the same product edited on two phones offline, so the last one sent wins | Waiting for me |
+
+### Twi to check (FE5)
+
+| Key | English | Draft Twi | Checked |
+|---|---|---|---|
+| `common.yes` | Yes | Aane | Waiting for a Twi speaker |
+| `common.no` | No | Daabi | Waiting for a Twi speaker |
+| `field.optional` | Optional | Ɛho nhia | Waiting for a Twi speaker |
+| `money.error.empty` | Enter an amount. | Kyerɛw sika dodoɔ. | Waiting for a Twi speaker |
+| `money.error.format` | Use numbers only, for example 120.50. | Fa nɔma nko ara, sɛ nhwɛsoɔ 120.50. | Waiting for a Twi speaker |
+| `money.error.decimals` | Use at most 2 numbers after the point. | Fa nɔma 2 pɛ wɔ tɔnk no akyi. | Waiting for a Twi speaker |
+| `money.error.tooLarge` | That amount is too large. | Sika no dɔɔso dodo. | Waiting for a Twi speaker |
+| `quantity.error.format` | Use whole numbers. | Fa nɔma a ɛyɛ mua. | Waiting for a Twi speaker |
+| `quantity.error.halfOnly` | Use whole or half yards (for example, 2.5). | Fa yaad mua anaa fa (sɛ nhwɛsoɔ 2.5). | Waiting for a Twi speaker |
+| `quantity.error.tooLarge` | That quantity is too large (up to 100,000). | Dodoɔ no dɔɔso dodo (kɔsi 100,000). | Waiting for a Twi speaker |
+| `unit.piece.one` | {qty} piece | {qty} baako | Waiting for a Twi speaker |
+| `unit.piece.other` | {qty} pieces | {qty} ahodoɔ | Waiting for a Twi speaker |
+| `unit.pair.one` | {qty} pair | {qty} pɛɛ | Waiting for a Twi speaker |
+| `unit.pair.other` | {qty} pairs | {qty} pɛɛ | Waiting for a Twi speaker |
+| `unit.set.one` | {qty} set | {qty} sɛt | Waiting for a Twi speaker |
+| `unit.set.other` | {qty} sets | {qty} sɛt | Waiting for a Twi speaker |
+| `unit.dozen.one` | {qty} dozen | {qty} dɔsɛn | Waiting for a Twi speaker |
+| `unit.dozen.other` | {qty} dozen | {qty} dɔsɛn | Waiting for a Twi speaker |
+| `unit.yard.one` | {qty} yard | {qty} yaad | Waiting for a Twi speaker |
+| `unit.yard.other` | {qty} yards | {qty} yaad | Waiting for a Twi speaker |
+| `unit.custom` | {qty} {label} | {qty} {label} | Waiting for a Twi speaker |
+| `sizeRange.shoes_eu` | Shoe sizes (30–46) | Mpaboa kɛseɛ (30–46) | Waiting for a Twi speaker |
+| `sizeRange.clothing_letters` | Clothing sizes (XS–XXXL) | Ntadeɛ kɛseɛ (XS–XXXL) | Waiting for a Twi speaker |
+| `sizeRange.children_years` | Children's ages (1Y–12Y) | Mmofra mfeɛ (1Y–12Y) | Waiting for a Twi speaker |
+| `stock.left` | {qty} left | {qty} aka | Waiting for a Twi speaker |
+| `stock.status.low` | Low stock | Aka kakra | Waiting for a Twi speaker |
+| `stock.status.out` | Out of stock | Asa | Waiting for a Twi speaker |
+| `stock.status.belowZero` | Below zero: check the shelf | Ɛkɔ ase sene hwee: hwɛ dan no so | Waiting for a Twi speaker |
+| `product.title` | Product | Adeɛ | Waiting for a Twi speaker |
+| `product.find` | Find a product | Hwehwɛ adeɛ | Waiting for a Twi speaker |
+| `product.none` | No products yet. | Nneɛma biara nni hɔ seesei. | Waiting for a Twi speaker |
+| `product.noneHere` | No products here. | Nneɛma biara nni ha. | Waiting for a Twi speaker |
+| `product.noMatch` | No products match "{query}". | Adeɛ biara nhyia "{query}". | Waiting for a Twi speaker |
+| `product.add` | Add product | Fa adeɛ ka ho | Waiting for a Twi speaker |
+| `product.addNamed` | Add "{name}" | Fa "{name}" ka ho | Waiting for a Twi speaker |
+| `product.edit` | Edit product | Sesa adeɛ no | Waiting for a Twi speaker |
+| `product.notFound` | This product is not on this phone. | Adeɛ yi nni fon yi so. | Waiting for a Twi speaker |
+| `product.showHidden` | Show hidden products | Kyerɛ nneɛma a wɔde asie | Waiting for a Twi speaker |
+| `product.showVisible` | Show products for sale | Kyerɛ nneɛma a wɔtɔn | Waiting for a Twi speaker |
+| `product.costNeeded.one` | {count} product needs a cost price | Adeɛ {count} hia ne tɔ-boɔ | Waiting for a Twi speaker |
+| `product.costNeeded.other` | {count} products need a cost price | Nneɛma {count} hia wɔn tɔ-boɔ | Waiting for a Twi speaker |
+| `product.costNeededTitle` | Cost price needed | Tɔ-boɔ a ɛhia | Waiting for a Twi speaker |
+| `product.costNeededLead` | These products have no cost price yet, so profit can't be worked out for them. Tap one to add it. | Nneɛma yi nni tɔ-boɔ, enti yɛntumi mmu wɔn mfasoɔ. Mia baako so na fa boɔ no ka ho. | Waiting for a Twi speaker |
+| `product.costNeededNone` | Every product has a cost price. | Adeɛ biara wɔ ne tɔ-boɔ. | Waiting for a Twi speaker |
+| `product.type` | Type | Ahodoɔ | Waiting for a Twi speaker |
+| `productType.all.label` | All | Ne nyinaa | Waiting for a Twi speaker |
+| `productType.clothing.label` | Clothing | Ntadeɛ | Waiting for a Twi speaker |
+| `productType.shoes.label` | Shoes | Mpaboa | Waiting for a Twi speaker |
+| `productType.fabric.label` | Fabric | Ntoma | Waiting for a Twi speaker |
+| `productType.other.label` | Other | Afoforɔ | Waiting for a Twi speaker |
+| `product.name` | Product name | Adeɛ no din | Waiting for a Twi speaker |
+| `product.designName` | Design name | Nwene no din | Waiting for a Twi speaker |
+| `product.unit` | Sold by the | Wɔtɔn no sɛ | Waiting for a Twi speaker |
+| `product.unit.piece` | Piece | Baako | Waiting for a Twi speaker |
+| `product.unit.pair` | Pair | Pɛɛ | Waiting for a Twi speaker |
+| `product.unit.set` | Set | Sɛt | Waiting for a Twi speaker |
+| `product.unit.dozen` | Dozen | Dɔsɛn | Waiting for a Twi speaker |
+| `product.unit.yard` | Yard | Yaad | Waiting for a Twi speaker |
+| `product.unit.custom` | My own word | Me ankasa asɛmfua | Waiting for a Twi speaker |
+| `product.unitLabel` | Your word for the unit | Wo asɛmfua ma susudua no | Waiting for a Twi speaker |
+| `product.section.what` | The product | Adeɛ no | Waiting for a Twi speaker |
+| `product.section.sizes` | Sizes | Kɛseɛ | Waiting for a Twi speaker |
+| `product.section.prices` | Prices | Ɛboɔ | Waiting for a Twi speaker |
+| `product.section.opening` | Starting stock | Nneɛma a ɛwɔ hɔ mfiaseɛ | Waiting for a Twi speaker |
+| `product.sizes` | Sizes | Kɛseɛ | Waiting for a Twi speaker |
+| `product.sizeMode.range` | Ready-made | Deɛ wɔayɛ dada | Waiting for a Twi speaker |
+| `product.sizeMode.custom` | My own | Me deɛ | Waiting for a Twi speaker |
+| `product.sizeMode.none` | No sizes | Kɛseɛ biara nni hɔ | Waiting for a Twi speaker |
+| `product.range` | Size range | Kɛseɛ ahodoɔ | Waiting for a Twi speaker |
+| `product.rangeFirst` | From | Efi | Waiting for a Twi speaker |
+| `product.rangeLast` | To | Kɔsi | Waiting for a Twi speaker |
+| `product.noRanges` | Ready-made sizes need the internet once. Type your own sizes instead. | Kɛseɛ a wɔayɛ dada hia intanɛt prɛko. Kyerɛw wo deɛ mmom. | Waiting for a Twi speaker |
+| `product.customSizes` | Sizes | Kɛseɛ | Waiting for a Twi speaker |
+| `product.customSizesHint` | Separate them with commas, for example 1Y, 2Y, 3Y | Fa koma tetew mu, sɛ nhwɛsoɔ 1Y, 2Y, 3Y | Waiting for a Twi speaker |
+| `product.sizesPreview.one` | {count} size: {sizes} | Kɛseɛ {count}: {sizes} | Waiting for a Twi speaker |
+| `product.sizesPreview.other` | {count} sizes: {sizes} | Kɛseɛ {count}: {sizes} | Waiting for a Twi speaker |
+| `product.retail` | Retail price | Ketewa-tɔn boɔ | Waiting for a Twi speaker |
+| `product.wholesale` | Wholesale price | Akɛseɛ-tɔn boɔ | Waiting for a Twi speaker |
+| `product.wholesaleHint` | Optional. If empty, wholesale sales use the retail price. | Ɛho nhia. Sɛ ɛyɛ hwee a, akɛseɛ-tɔn de ketewa-tɔn boɔ di dwuma. | Waiting for a Twi speaker |
+| `product.cost` | Cost price | Tɔ-boɔ | Waiting for a Twi speaker |
+| `product.costHint` | Only you can see this. | Wo nko ara na wohu yei. | Waiting for a Twi speaker |
+| `product.sameAsRetail` | Same as retail | Ɛte sɛ ketewa-tɔn boɔ | Waiting for a Twi speaker |
+| `product.costMissing` | Cost price needed | Tɔ-boɔ hia | Waiting for a Twi speaker |
+| `product.openingHint` | How many you have now. Leave a box empty if you have none. | Dodoɔ a wowɔ seesei. Sɛ wonni bi a, gyae ahwɛ no hwee. | Waiting for a Twi speaker |
+| `product.openingOne` | Quantity now | Dodoɔ seesei | Waiting for a Twi speaker |
+| `product.openingFor` | Size {size}: quantity now | Kɛseɛ {size}: dodoɔ seesei | Waiting for a Twi speaker |
+| `product.inStock` | In stock | Ɛwɔ hɔ | Waiting for a Twi speaker |
+| `product.ownPrice` | own price | ne boɔ ankasa | Waiting for a Twi speaker |
+| `product.sizePrices` | Prices | Ɛboɔ | Waiting for a Twi speaker |
+| `product.sizePricesTitle` | Prices for size {size} | Kɛseɛ {size} boɔ | Waiting for a Twi speaker |
+| `product.sizePricesHint` | Leave a price empty to use the product's price. | Gyae boɔ bi hwee na de adeɛ no boɔ adi dwuma. | Waiting for a Twi speaker |
+| `product.removeSize` | Remove | Yi fi hɔ | Waiting for a Twi speaker |
+| `product.removeSizeTitle` | Remove size {size}? | Yi kɛseɛ {size} fi hɔ? | Waiting for a Twi speaker |
+| `product.removeSizeText` | It will no longer be offered for sale. Past sales still show it. | Wɔrentɔn bio. Adetɔn a atwam da so kyerɛ. | Waiting for a Twi speaker |
+| `product.sizeHasStock` | This size still has {qty} in stock, so it can't be removed. | Kɛseɛ yi da so wɔ {qty}, enti wɔntumi nnyi. | Waiting for a Twi speaker |
+| `product.sizeRemoved` | Size {size} removed. | Wɔayi kɛseɛ {size}. | Waiting for a Twi speaker |
+| `product.addSize` | Add size | Fa kɛseɛ ka ho | Waiting for a Twi speaker |
+| `product.sizeLabel` | Size | Kɛseɛ | Waiting for a Twi speaker |
+| `product.sizeQuantity` | Quantity now | Dodoɔ seesei | Waiting for a Twi speaker |
+| `product.sizeAdded` | Size {size} added. | Wɔde kɛseɛ {size} aka ho. | Waiting for a Twi speaker |
+| `product.hide` | Hide product | Fa adeɛ no sie | Waiting for a Twi speaker |
+| `product.show` | Show product again | Kyerɛ adeɛ no bio | Waiting for a Twi speaker |
+| `product.hidden` | Hidden. It won't be offered for sale. | Wɔde asie. Wɔrentɔn. | Waiting for a Twi speaker |
+| `product.shownAgain` | It's offered for sale again. | Wɔretɔn bio. | Waiting for a Twi speaker |
+| `product.hiddenNote` | This product is hidden: it isn't offered for sale. Past sales still show it. | Wɔde adeɛ yi asie: wɔntɔn. Adetɔn a atwam da so kyerɛ. | Waiting for a Twi speaker |
+| `product.openIt` | Open it | Bue | Waiting for a Twi speaker |
+| `product.history` | History | Abakɔsɛm | Waiting for a Twi speaker |
+| `product.historyNone` | No changes recorded yet. | Nsesaeɛ biara nni hɔ seesei. | Waiting for a Twi speaker |
+| `product.historyOffline` | The history needs the internet. Connect and try again. | Abakɔsɛm no hia intanɛt. Fa bɔ ho na san bɔ mmɔden. | Waiting for a Twi speaker |
+| `product.historyAdded` | Product added | Wɔde adeɛ no kaa ho | Waiting for a Twi speaker |
+| `product.historyChanged` | Product changed | Wɔsesaa adeɛ no | Waiting for a Twi speaker |
+| `product.historySize` | Size {size} | Kɛseɛ {size} | Waiting for a Twi speaker |
+| `product.historyConflict` | Changed on two phones at once | Wɔsesaa wɔ fon abien so prɛko | Waiting for a Twi speaker |
+| `product.field.name` | Name | Din | Waiting for a Twi speaker |
+| `product.field.label` | Size | Kɛseɛ | Waiting for a Twi speaker |
+| `product.field.type` | Type | Ahodoɔ | Waiting for a Twi speaker |
+| `product.field.unit` | Unit | Susudua | Waiting for a Twi speaker |
+| `product.field.unitLabel` | Unit word | Susudua asɛmfua | Waiting for a Twi speaker |
+| `product.field.retailMinor` | Retail price | Ketewa-tɔn boɔ | Waiting for a Twi speaker |
+| `product.field.wholesaleMinor` | Wholesale price | Akɛseɛ-tɔn boɔ | Waiting for a Twi speaker |
+| `product.field.costMinor` | Cost price | Tɔ-boɔ | Waiting for a Twi speaker |
+| `product.field.isHidden` | Hidden | Wɔde asie | Waiting for a Twi speaker |
+| `product.field.isActive` | For sale | Wɔtɔn | Waiting for a Twi speaker |
+| `product.field.lowStockLevelUnits` | Low stock level | Aka-kakra dodoɔ | Waiting for a Twi speaker |
+| `product.field.lowStockWarnings` | Low stock warnings | Aka-kakra kɔkɔbɔ | Waiting for a Twi speaker |
+| `product.warning.WHOLESALE_ABOVE_RETAIL` | The wholesale price is higher than the retail price. | Akɛseɛ-tɔn boɔ no boro ketewa-tɔn boɔ no so. | Waiting for a Twi speaker |
+| `product.warning.BELOW_COST` | This price is below your cost price. | Saa boɔ yi sua sene wo tɔ-boɔ. | Waiting for a Twi speaker |
+| `product.warning.PRODUCT_NAME_DUPLICATE` | You already have a product with this name. | Wowɔ adeɛ a ne din te saa dada. | Waiting for a Twi speaker |
+| `product.warning.SIZE_LABEL_DUPLICATE` | This product already has this size. | Adeɛ yi wɔ saa kɛseɛ yi dada. | Waiting for a Twi speaker |
+| `product.error.nameEmpty` | Enter a product name. | Kyerɛw adeɛ no din. | Waiting for a Twi speaker |
+| `product.error.nameLong` | Use a shorter name (up to 80 characters). | Fa din tiaa (nkyerɛwdeɛ 80 mu). | Waiting for a Twi speaker |
+| `product.error.type` | Choose a type. | Paw ahodoɔ. | Waiting for a Twi speaker |
+| `product.error.unit` | Choose how it is sold. | Paw sɛdeɛ wɔtɔn no. | Waiting for a Twi speaker |
+| `product.error.fabricUnit` | Fabric is sold by the piece or by the yard. | Wɔtɔn ntoma sɛ baako anaa yaad. | Waiting for a Twi speaker |
+| `product.error.unitLabel` | Enter the unit's name (up to 20 characters). | Kyerɛw susudua no din (nkyerɛwdeɛ 20 mu). | Waiting for a Twi speaker |
+| `product.error.retailRequired` | Enter the retail price. | Kyerɛw ketewa-tɔn boɔ. | Waiting for a Twi speaker |
+| `product.error.priceRange` | Use a price from 0.01 to 1,000,000.00. | Fa boɔ a ɛfi 0.01 kɔsi 1,000,000.00. | Waiting for a Twi speaker |
+| `product.error.costRequired` | Enter the cost price. | Kyerɛw tɔ-boɔ. | Waiting for a Twi speaker |
+| `product.error.fabricSizes` | Fabric has no sizes. | Ntoma nni kɛseɛ. | Waiting for a Twi speaker |
+| `product.error.tooManySizes` | A product can have at most 60 sizes. | Adeɛ biara ntumi nnya kɛseɛ boro 60. | Waiting for a Twi speaker |
+| `product.error.sizeLabel` | Enter the size (up to 20 characters). | Kyerɛw kɛseɛ no (nkyerɛwdeɛ 20 mu). | Waiting for a Twi speaker |
+| `product.error.noSizes` | Type at least one size, or choose "No sizes". | Kyerɛw kɛseɛ baako pɛ, anaa paw "Kɛseɛ biara nni hɔ". | Waiting for a Twi speaker |
+| `product.error.unitLocked` | This product already has stock, so it can't switch between yards and other units. | Adeɛ yi wɔ nneɛma dada, enti wɔntumi nsesa nfi yaad mu nkɔ susudua foforɔ mu. | Waiting for a Twi speaker |
+| `product.error.noShop` | Connect to the internet once so this phone knows your shop, then add the stock. | Fa intanɛt bɔ ho prɛko na fon yi nhu wo sotɔɔ, na afei fa nneɛma no ka ho. | Waiting for a Twi speaker |
+| `op.product.upsert` | Product change | Adeɛ nsesaeɛ | Waiting for a Twi speaker |
+| `op.size.upsert` | Size change | Kɛseɛ nsesaeɛ | Waiting for a Twi speaker |
+| `op.stock.create` | Stock entry | Nneɛma a wɔde aka ho | Waiting for a Twi speaker |
+| `errors.code.NOT_FOUND` | It no longer exists on the server. | Ɛnni server no so bio. | Waiting for a Twi speaker |
+| `errors.code.ID_TAKEN` | The app sent a number that was already used. | App no de nɔma a wɔde adi dwuma dada kɔeɛ. | Waiting for a Twi speaker |
+| `errors.code.SIZES_NOT_ALLOWED` | Fabric has no sizes. | Ntoma nni kɛseɛ. | Waiting for a Twi speaker |
+| `errors.code.UNIT_LOCKED` | This product already has stock, so it can't switch between yards and other units. | Adeɛ yi wɔ nneɛma dada, enti wɔntumi nsesa nfi yaad mu nkɔ susudua foforɔ mu. | Waiting for a Twi speaker |
+| `errors.code.SIZE_HAS_STOCK` | This size still has stock, so it can't be removed. | Kɛseɛ yi da so wɔ nneɛma, enti wɔntumi nnyi. | Waiting for a Twi speaker |
